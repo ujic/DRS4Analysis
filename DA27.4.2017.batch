@@ -1,0 +1,9 @@
+#!/bin/bash
+FILES= *.dat
+for f in $FILES
+do
+  echo "Processing $f file..."
+  ./DA $f 3.0 0.0
+done
+
+
