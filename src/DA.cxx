@@ -13,6 +13,7 @@
 
 // TO DO:
 
+/// to introduce spike rejection !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
 // to introduce deconvolution all that in the 27.4.2017. folder where I'll form a github conection
 			// - first find unit signals
@@ -79,6 +80,8 @@ int main (int argc, const char * argv[]) {
 	//DataHandler->AmplitudeTimeCorrection(filename); // this should make amplitude time correction of two trigger scintillator
 	
 	DataHandler->ProcessFile(filename);
+	
+	cout<<"DA.cxx"<<flush<<endl;
 	
 	dateStamp = DataHandler->getDateStamp();
 	

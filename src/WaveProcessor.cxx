@@ -18,20 +18,20 @@ WaveProcessor::WaveProcessor() :
     TempShapeCh3(NULL),
     TempShapeCh4(NULL),
     RawTempShape(NULL)
-{}
+{
+	TotShape[0] = new TH1F("Stack", "Stack", NBINS, 0, 200);
+	TotShape[1] = new TH1F("TotShapeCh1", "Time Shape of channel 1", NBINS, 0, 200); 
+	TotShape[2] = new TH1F("TotShapeCh2", "Time Shape of channel 2", NBINS, 0, 200); 
+	TotShape[3] = new TH1F("TotShapeCh3", "Time Shape of channel 3", NBINS, 0, 200); 
+	TotShape[4] = new TH1F("TotShapeCh4", "Time Shape of channel 4", NBINS, 0, 200); 
+	}
 
 WaveProcessor::~WaveProcessor(){
-/*	
-	free_matrix(TimeBinWidth,1,No_of_Ch,0,1023);
-	free_matrix(BinVoltage,1,No_of_Ch,0,1023);
-	free_matrix(TimeBinVoltage,1,No_of_Ch,0,1023);
-*/
-/*
-	delete TimeShapeCh1;
-	if (No_of_Ch>1) delete TimeShapeCh2; 
-	if (No_of_Ch>2) delete TimeShapeCh3;
-	if (TimeShapeCh4) delete TimeShapeCh4; // should work if TimeShapeCh4 is defined i.e. is not a null pointer any more
-*/
+// 
+	delete TotShape[1]; // should work if TimeShapeCh4 is defined i.e. is not a null pointer any more
+	delete TotShape[2];
+	delete TotShape[3];
+	delete TotShape[4];
 }
 
 void WaveProcessor::InitializeAnalysisTree(){
@@ -102,7 +102,7 @@ void WaveProcessor::allignCells0(USHORT trigger_cell){ // align cell #0 of all c
 	
 	aligned=true;
 	
-	if(No_of_Ch==4) t1 = TimeBinVoltage[1][(1024-trigCell) % 1024]; // ch1 is a referent chanel
+	if(No_of_Ch==4) t1 = TimeBinVoltage[4][(1024-trigCell) % 1024]; // ch1 is a referent chanel
 	else {
 		cout<<"Alignement on given channel not possible \n See WaveProcessor::allignCells0 function   \n Exiting..."<<endl;
 		exit(EXIT_FAILURE);
@@ -115,207 +115,7 @@ void WaveProcessor::allignCells0(USHORT trigger_cell){ // align cell #0 of all c
 	}
 }
 
-void WaveProcessor::AmplitudeTimeCorrection(char* filename){ // this function read the file as the FileProcess function does
-	
-	//TGraphErrors* greS3 = new TGraphErrors(); 
-	//TGraphErrors* greS4 = new TGraphErrors();
-	//TGraphErrors* greS3S4 = new TGraphErrors();
-	int ChS3(CHS3), ChS4(CHS4);
-	Float_t S3Time[20000], S3Amplitude[20000], S3AmpErr[20000], S3TimeErr[20000], S4Time[20000], S4Amplitude[20000], S4AmpErr[20000], S4TimeErr[20000];
-	int eventNo, eventS3(0), eventS4(0);// not all event will be writen in TGraph
-	
-	ifstream DAfile (filename, ios::in|ios::binary);
-	char word[4], small_word[2];
-	
-	UnitPosAmpl triggScint, triggScint2;
 
-	int ChCounter(1);
-	int i, j;
-
-	SSHORT aux_SSHORT;
-	USHORT trigCell;
-	string string1;
-      /*
-    WaveformParam WFParamCh1; // for one counter of the scintillator counter
-	WaveformParam WFParamCh2; // for the other one
-	WaveformParam WFParamCh3; 
-	WaveformParam WFParamCh4; 
-	
-	TH1F* FWHMCh1 = new TH1F("FWHMCh1", "FWHM of S1", 100, 4, 15);
-	TH1F* FWHMCh2 = new TH1F("FWHMCh2", "FWHM of S2", 100, 4, 15);
-	TH1F* FWHMCh3 = new TH1F("FWHMCh3", "FWHM of S3", 100, 4, 15);
-	TH1F* FWHMCh4 = new TH1F("FWHMCh4", "FWHM of S4", 100, 4, 15);
-	*/
-	
-	string1=filename;
-	
-if(DAfile.is_open())
-	{    
-		for (i=0; i<4; i++) DAfile.read(word, 4); // first four words are allways file header, time header, board serial No and Channel1 header
-		string1="";
-		for (i=0; i<4; i++) string1+=word[i];
-		if (DEBUG) cout<<"Ch. header: "<<string1<<endl<<flush;
-		string1="";
-		while (string1!="EHDR"){ // prvi put kad naidje na EHDR, znaci da vise nema kanala za citanje kalibracije
-			for (i=0; i<1024; i++){ //after that allways followed by the time calibration of the CH1
-				DAfile.read(word, 4);
-							
-				if(DEBUG) cout<<"Calib: ChCounter="<< ChCounter<<", bin="<<i<<", value="<<convertChtoF(word)<<endl<<flush;
-				
-				 set_time_calibration(ChCounter, i, convertChtoF(word));
-			}
-			
-			DAfile.read(word, 4);
-			string1="";
-			for (i=0; i<4; i++) string1+=word[i];
-			if (string1=="C002") ChCounter=2;
-			if (string1=="C003") ChCounter=3;
-			if (string1=="C004") ChCounter=4;
-		if (DEBUG) cout<<"Next ch. header: "<<string1<<endl<<flush;
-			//cin>>cchh;
-		}
-		
-		SetNoOfChannels(ChCounter);
-		
-				string1="";
-		// ocitano je da "EHDR" i ide se na ocitavanje dogadjaja
-		while (!DAfile.eof()) {//this loop until there is no more of any event i.e end of the file
-			DAfile.read(word, 4);
-			eventNo=convertChtoUint(word); // first word after "EHDR"
-			//cout<<"Event: "<<eventID<<endl;
-			if ((float)((int)((float)eventNo/500.))==(float)eventNo/500.) cout << "Event: "<<eventNo<<endl;
-
-			DAfile.read(small_word,2);  
-			dateStmp.year=convertChtoUSHORT(small_word);  
-			DAfile.read(small_word,2);
-			dateStmp.month=convertChtoUSHORT(small_word);
-			DAfile.read(small_word,2);
-			dateStmp.day=convertChtoUSHORT(small_word);
-			DAfile.read(small_word,2);
-			dateStmp.hour=convertChtoUSHORT(small_word);
-			DAfile.read(small_word,2);
-			dateStmp.minute=convertChtoUSHORT(small_word);
-			DAfile.read(small_word,2);
-			dateStmp.second=convertChtoUSHORT(small_word);
-			DAfile.read(small_word,2);
-			dateStmp.milisecond=convertChtoUSHORT(small_word);
-			
-			DAfile.read(small_word,2);
-			range=convertChtoSSHORT(small_word); 
-			if (DEBUG) cout<<" range = "<<((float)range)/1000.<<endl;
-
-			DAfile.read(word, 4); // this reads the board serial number, not needed for us
-			DAfile.read(small_word,2); // this is always "T#" marking that the next small_word is Number of first readout cell
-
-			DAfile.read(small_word,2);
-			trigCell=convertChtoUSHORT(small_word);
-			
-			for (j=1; j<=ChCounter; j++) {
-				DAfile.read(word, 4);
-				string1="";
-				for (i=0; i<3; i++) string1+=word[i];
-				if (string1!="C00") {
-					cout<<"string1:"<<string1<<endl;
-					cout<<"Error, C00x expected. Exiting..."<<endl;
-					exit(EXIT_FAILURE);
-				}
-				DAfile.read(word, 4);
-				scaller = convertChtoF(word);
-
-				
-				for (i=0; i<1024; i++){ 
-					DAfile.read(small_word,2);
-					//aux_USHORT=convertChtoUSHORT(small_word);
-					aux_SSHORT = convertChtoSSHORT(small_word);
-
-					 set_bin_time_n_voltage(j, i, aux_SSHORT, range, trigCell);
-				}//end for i
-			} //end for j
-			
-			if (DEBUG) cout<<"Aligning channels ..."<<eventID<<endl;
-			
-			 allignCells0(trigCell); // align cell #0 of all channels
-			
-			if (DEBUG) cout<<"Create and fill histograms of an event: "<<eventID<<endl;
-						 CreateTempHistograms(); // <slower procedure>
-			
-			triggScint = give_time_amplitude(ChS3);
-//			if (DEBUG2) cout<<"amplitude="<<triggScint.amplitude<<", startPos="<<triggScint.startPosition<<endl;
-			if (triggScint.amplitude>=0) { 	// amplitude is writen as -1 if its smaller then 4. mV above baseLine, 
-											// or if the fit is bad
-				eventS3++;
-				S3Amplitude[eventS3] 	= triggScint.amplitude; 
-				S3Time[eventS3]			= triggScint.startPosition;
-				S3AmpErr[eventS3]		= triggScint.amplitude_err;
-				S3TimeErr[eventS3]		= 0.1; 
-			}
-			
-
-
-			//write to graph
-			triggScint2 = give_time_amplitude(ChS4);	
-			if (triggScint2.startPosition > 40.) cout<<triggScint2.startPosition<<", event:"<<eventNo<<endl;
-			
-			if (triggScint2.amplitude>=0) { 	// amplitude is writen as -1 if its smaller then 4. mV above baseLine, 
-											// or if the fit is bad
-				eventS4++;
-				S4Amplitude[eventS4] 	= triggScint2.amplitude; 
-				S4Time[eventS4]			= triggScint2.startPosition;
-				S4AmpErr[eventS4]		= triggScint2.amplitude_err; 
-				S4TimeErr[eventS4]		= 0.1;
-			}
-			
-		
-			
-			
-
-			
-			
-			
-			
-						DAfile.read(word, 4); // if not eof, then it must be a new event
-			string1="";
-			for (i=0; i<4; i++) string1+=word[i];
-			if ((string1!="EHDR")&&(!DAfile.eof())){
-				
-				cout<<"Error, EHDR expected instead of"<< string1 <<endl;
-				exit(EXIT_FAILURE);
-			}
-			
-			 DeleteTempHistograms();	
-		
-		}// while !eof, go to read new event
-				
-} // end of DAfile.is_open
-
-TGraphErrors* greS3 = new TGraphErrors(eventS3, S3Amplitude, S3Time, S3AmpErr, S3TimeErr);
-TGraphErrors* greS4 = new TGraphErrors(eventS4, S4Amplitude, S4Time, S4AmpErr, S4TimeErr);
-			TF1 *fitfun = new TF1("fitfun", "[0]+[1]/x", 0., 2000.);
-			fitfun->SetParameter(0, 35.);
-			fitfun->SetParameter(1, 100.);
-			//rcfun->SetRange(3., 125.);
-			//TFitResultPtr pfit = 
-			greS3->Fit(fitfun, "S EX0");
-			double a0S3 = fitfun->GetParameter(0);
-			double a1S3 = fitfun->GetParameter(1);
-			greS4->Fit(fitfun, "S EX0");
-			double a0S4 = fitfun->GetParameter(0);
-			double a1S4 = fitfun->GetParameter(1);
-			
-			//cout<<a01<<" "<<a11<<endl;
-
-	TCanvas *canv = new TCanvas("canv", "greS#",800,400);
-	canv->Divide(2,1,0.05,0.05);
-	canv->cd(1);
-	greS3->Draw("ap");
-	canv->cd(2);
-	greS4->Draw("*ap");
-	canv->SaveAs("greS.pdf");
-	
-						
-DAfile.close();						
-
-}
 
 void WaveProcessor::ProcessFile(char* filename){
 	
@@ -324,7 +124,7 @@ void WaveProcessor::ProcessFile(char* filename){
 	char word[4], small_word[2];
 	char filenameROOT[256];
 	int ChCounter(1);
-	int i, j;
+	int i, j, cnttmp(0);
 	date dateStmp;
 	SSHORT aux_SSHORT;
 	USHORT trigCell;
@@ -340,7 +140,9 @@ void WaveProcessor::ProcessFile(char* filename){
 	TH1F* FWHMCh3 = new TH1F("FWHMCh3", "FWHM of S3", 100, 4, 15);
 	TH1F* FWHMCh4 = new TH1F("FWHMCh4", "FWHM of S4", 100, 4, 15);
 	
-	string1="root/";
+	//string1="root/";
+	//string1.append(filename);
+	string1="";
 	string1.append(filename);
 	string1.erase(string1.end()-4, string1.end());
 	string1.append("_trig=");
@@ -447,9 +249,14 @@ if(DAfile.is_open())
 			if (DEBUG) cout<<"Aligning channels ..."<<eventID<<endl;
 			
 			 allignCells0(trigCell); // align cell #0 of all channels
+
+			//RemoveSpikes(1.5, 2); // (threshold, width in bins)
 			
 			if (DEBUG) cout<<"Create and fill histograms of an event: "<<eventID<<endl;
-						 CreateTempHistograms(); // <slower procedure>
+
+			 CreateTempHistograms(); // <slower procedure>
+			 
+			 
 						
 						
 			if(eventID==1)  FilterFFTofCurrentHist(1);
@@ -462,14 +269,24 @@ if(DAfile.is_open())
 
 			if (ChCounter>=Ch_PM1) WFParamPM1 =  give_waveform_parameters(Ch_PM1); 
 			if (ChCounter>=Ch_PM2) WFParamPM2 =  give_waveform_parameters(Ch_PM2);
+			if (ChCounter>=CHS3) WFParamS3 =  give_waveform_parameters(CHS3); 
+			if (ChCounter>=CHS4) WFParamS4 =  give_waveform_parameters(CHS4);
+			
 			if (DEBUG) cout<<"Filling the tree..."<<flush<<endl;
 			paramTree -> Fill();
-			if (DEBUG) cout<<"The tree filled."<<flush<<endl;			
+			if (DEBUG) cout<<"The tree filled."<<flush<<endl;
+			FillTotHistograms(WFParamPM1.arrivalTime, WFParamPM2.arrivalTime, WFParamS3.arrivalTime, WFParamS4.arrivalTime);
+	
+			
+		
 
-			if (eventID<20)
+			if ((WFParamPM1.FW10pcntM>30.)&&(WFParamPM1.maxVal>15.)&&(cnttmp<20))
 			{ 
-				PrintCurrentHist(3);
-				PrintCurrentHist(4);
+				cnttmp++;
+				PrintCurrentHist(1);
+				//PrintCurrentHist(4);
+				cout<<"baseLine="<<WFParamPM1.baseLine<<", baseLineRMS="<<WFParamPM1.baseLineRMS<<", maxVal="<<WFParamPM1.maxVal
+				<<", FW10pcntM="<<WFParamPM1.FW10pcntM<<endl;
 			}
 			
 			
@@ -488,10 +305,19 @@ if(DAfile.is_open())
 				
 } // end of DAfile.is_open
 
+TotShape[1]->Write();
+TotShape[2]->Write();
+TotShape[3]->Write();
+TotShape[4]->Write();
 paramTree -> Write();
-f->Close();
-DAfile.close();	
 
+cout<<"Tree writen..., closing root file..."<<flush<<endl;
+
+f->Close();
+
+cout<<"root file closed, closing dat file..."<<flush<<endl;
+DAfile.close();	
+cout<<"closed dat file..."<<flush<<endl;
 	
 }
 
@@ -512,6 +338,8 @@ void WaveProcessor::CreateTempHistograms(){
 		}
 		
 		// temporary histograms for time shape, must be deleted after each event because they are rebinned each time
+		// it has to be done since the bins' widths are different, after the "rotation" every bin will not come in the coresponding
+		// bin, if their widths wouldn't be rotated as well
 		switch (j) {
 			case 1: TempShapeCh1 = new TH1F("TempShapeCh1", "Time Shape of channel 1", 1023, TimeBinVoltage [j]); break;// 1024 bins (1023 in definition), width in ns
 			case 2: TempShapeCh2 = new TH1F("TempShapeCh2", "Time Shape of channel 2", 1023, TimeBinVoltage [j]); break;
@@ -531,12 +359,22 @@ void WaveProcessor::CreateTempHistograms(){
 		//if(DEBUG) cout <<"i in FillHistograms: "<<i<<endl;
 		if (DEBUG3) cout<<"BinVoltage["<<j<<"]["<<i<<"]="<<BinVoltage[j][i]<<endl;
 		if (DEBUG3) cout<<"TimeBinVoltage["<<j<<"]["<<i<<"]="<<TimeBinVoltage[j][i]<<endl;
-		
+
+/*		
 		switch (j) {
 			case 1: TempShapeCh1->Fill(TimeBinVoltage[j][i], BinVoltage[j][i]); break;
 			case 2: TempShapeCh2->Fill(TimeBinVoltage[j][i], BinVoltage[j][i]); break;
 			case 3: TempShapeCh3->Fill(TimeBinVoltage[j][i], BinVoltage[j][i]); break;
 			case 4: TempShapeCh4->Fill(TimeBinVoltage[j][i], BinVoltage[j][i]); break;
+		}
+*/
+// Filling is done by the SetbinContent, because it's faster and now it's OK since the widths are also rotated...
+// May, 3 2017
+		switch (j) {
+			case 1: TempShapeCh1->SetBinContent(i, BinVoltage[j][i]); break;
+			case 2: TempShapeCh2->SetBinContent(i, BinVoltage[j][i]); break;
+			case 3: TempShapeCh3->SetBinContent(i, BinVoltage[j][i]); break;
+			case 4: TempShapeCh4->SetBinContent(i, BinVoltage[j][i]); break;
 		}
 		
 		if (DEBUG3) pomi = TempShapeCh1->FindBin(TimeBinVoltage[j][i]);
@@ -620,7 +458,7 @@ TH1* WaveProcessor::FilterFFTofCurrentHist(int ch){ // to finish it if needed
 
    histMagnitude->SetTitle("Magnitude of the 1st transform");
    histMagnitude->Draw();
-	canvFFT->SaveAs(histfilename);
+	// canvFFT->SaveAs(histfilename); // to check the graph
 	
 	TH1 *histPhase = 0;
    histPhase = tmp->FFT(histPhase, "PH");
@@ -631,8 +469,10 @@ TH1* WaveProcessor::FilterFFTofCurrentHist(int ch){ // to finish it if needed
    Double_t *im_full = new Double_t[n];
    fft->GetPointsComplex(re_full,im_full);
    
+
    // Frequency filter (the noise should be checked on the histograms and then apply the filter)
-   
+
+      // this should be re-made, but if found to be necessary   
    for (i=90;i<130;i++){ // there was a bump at this position, apparently coming from the noise of 10 ns period seen on the waveform
 	   re_full[i]=25;
 	   im_full[i]=25;
@@ -683,13 +523,13 @@ Float_t WaveProcessor::GetFWHM(int Ch, Float_t BL, Float_t height) { // height [
 	
 	height = ((AnalysisHist->GetBinContent(maxBin))-BL)/(100./height); // height in [%]
 	
-
+	//if ((AnalysisHist->GetBinCenter(maxBin)>70)||(AnalysisHist->GetBinCenter(maxBin)<20)) return 200. ; // this means that something is wrong - probably a spike
 	
 	while ((leftFWHM==0)||(rightFWHM==0)){
 		i++;
 		if ((maxBin-i<0)||(maxBin+i>1024)) break; // couldn't find FWHM, will return 0 
-		if (leftFWHM==0) leftFWHM = ((AnalysisHist->GetBinContent(maxBin-i))<height)?(maxBin-i):leftFWHM ;
-		if (rightFWHM==0) rightFWHM= ((AnalysisHist->GetBinContent(maxBin+i))<height)?(maxBin+i):rightFWHM ;
+		if (leftFWHM==0) leftFWHM = ((AnalysisHist->GetBinContent(maxBin-i))<(height+BL))?(maxBin-i):leftFWHM ;
+		if (rightFWHM==0) rightFWHM= ((AnalysisHist->GetBinContent(maxBin+i))<(height+BL))?(maxBin+i):rightFWHM ;
 	}	
 	FWHM = AnalysisHist->GetBinCenter(rightFWHM) - AnalysisHist->GetBinCenter(leftFWHM);
 	
@@ -697,73 +537,6 @@ Float_t WaveProcessor::GetFWHM(int Ch, Float_t BL, Float_t height) { // height [
 
 }
 
-UnitPosAmpl WaveProcessor::give_time_amplitude(int Ch) {
-	TH1F* AnalysisHist;
-	UnitPosAmpl output;
-	Float_t baseLine;
-	Float_t time_of_maximum;
-		
-		switch (Ch) {
-		case 1: AnalysisHist = TempShapeCh1; break;
-		case 2: AnalysisHist = TempShapeCh2; break;
-		case 3: AnalysisHist = TempShapeCh3; break;
-		case 4: AnalysisHist = TempShapeCh4; break;
-	}
-	//if (DEBUG2)	cout<<"Ch:"<<Ch<<endl;
-/// check !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!111
-/// 35. may be wrong for S3 and S4	-  IT should be 25. ns
-	baseLine = AnalysisHist->Integral(0, AnalysisHist->FindBin(25.-delay), "width") / (25.-delay) ;
-	//if (DEBUG2)	cout<<"baseLine:"<<baseLine<<endl;	
-	
-	if ((AnalysisHist->GetMaximum()-baseLine)<4.) {
-		output.startPosition = -1.;
-		output.amplitude = -1; 
-		return output; // ignore event - could be false event - too risky
-	}
-	
-	time_of_maximum = AnalysisHist->GetXaxis()->GetBinCenter(AnalysisHist->GetMaximumBin());
-	
-	output.startPosition = AnalysisHist->GetXaxis()->GetBinCenter(AnalysisHist->FindFirstBinAbove(triggerHeight+baseLine));
-	
-	//if (DEBUG2)	cout<<"starPosition:"<<output.startPosition<<", time_of_maximum="<<time_of_maximum<<endl;
-	
-	TF1* gauss = new TF1("gauss","gaus",(time_of_maximum - 4.), (time_of_maximum + 4.));
-	
-	AnalysisHist->Fit(gauss,"NQ","", (time_of_maximum - 4.), (time_of_maximum + 4.)) ; 
-	
-	//if (DEBUG2) cout<<"Fit done.."<<flush<<endl;
-	
-	/*
-	TCanvas *canv = new TCanvas("canv", "greS#",1);
-
-	AnalysisHist->Draw("");
-	canv->SaveAs("AnalysisHist.pdf");
-	
-	exit(EXIT_SUCCESS);
-	*/
-	
-	
-
-	Double_t Chi2 = gauss->GetChisquare();
-	if (Chi2<1.){
-		output.amplitude = gauss->GetParameter(0);
-		output.amplitude_err = gauss->GetParError(0);
-	}
-	else output.amplitude = -1.; // this will indicate that the fit was bad (here Chi2 is <1 if the fit is OK
-	
-	if ((output.startPosition<20.)||(output.startPosition>40.)) output.amplitude=-1.; // this also indicates that something is wrong
-	
-	if (DEBUG2) {
-				Double_t Chi2 = gauss->GetChisquare();
-		if ((output.amplitude_err>1))  cout<<": output.amplitude="<<output.amplitude<<", output.amplitudeErr="<<output.amplitude_err<<", Chi2="<<Chi2<<flush<<endl;
-	}
-	//Double_t chi2=func1->GetChisquare(); 
-		
-
-		
-return output;
-
-}
 
 ///////////// give_waveform_parameters /////////////////////
 
@@ -789,9 +562,13 @@ WaveformParam output; //how many parameters to be returned
 	output.baseLine = AnalysisHist->Integral(0, AnalysisHist->FindBin(35.-delay), "width") / (35.-delay) ; 
 	output.baseLineRMS = CalcHistRMS(AnalysisHist, 1, AnalysisHist->FindBin(35.-delay));
 
+	// this line is for constant fraction discrimination :
+	// output.arrivalTime = ArrivalTime(AnalysisHist, triggerHeight, baseLine, 3., 0.2); // risetime 3. ns, by eye, fraction 0.2
+
 	int ArrivalTimeBin = AnalysisHist->FindFirstBinAbove(triggerHeight+output.baseLine); // bin should be transformed to ns according to axis
 	
 	if (DEBUG) cout<<"ArrivalTimeBin="<<ArrivalTimeBin<<endl;
+	
 	
 	if (ArrivalTimeBin==-1) { 
 		//cout<<"In give_waveform_parameters, couldn't find the signal. Empty histogram or the threshold is too high! returning 0..."<<flush<<endl; 
@@ -800,6 +577,8 @@ WaveformParam output; //how many parameters to be returned
 		//return output; 
 		} //exit(1);}
 	output.arrivalTime = AnalysisHist->GetXaxis()->GetBinCenter(ArrivalTimeBin);
+	
+	
 	output.FWHM = GetFWHM(Ch, output.baseLine);
 	output.FW10pcntM = GetFWHM(Ch, output.baseLine, 10);
 	
@@ -928,6 +707,285 @@ float WaveProcessor::CalcHistRMS(const TH1F *hist, int first, int last){
 	
 }
 
+float WaveProcessor::MeanAndRMS(const TH1F *hist, int first, int last, float &mean, float &rms){
+
+  if ( !hist ) return -1.;
+  if ( first < 1 || first > hist->GetNbinsX() || last < 1 || last > hist->GetNbinsX() ) {
+    return -1;
+  }
+  if ( last < first ) {
+    int temp = first;
+    first = last;
+    last = temp;
+  }
+
+  float sum = 0, sumSq = 0;
+
+  for(int i=first; i<=last; i++){
+    float c = hist->GetBinContent(i);
+    sum += c;
+    sumSq += c*c;
+  }
+
+  int nBins = (last - first + 1);
+  mean = sum / nBins;
+  float meanSq = sumSq / nBins;
+  rms = sqrt( meanSq - mean*mean );
+  return mean;
+
+}
+
+
+float WaveProcessor::ArrivalTime(TH1F* hist, float threshold, float baseline,
+                                  float risetime, float fraction) // risetime=3ns, saw by eye 
+{
+
+  if ( !hist ) return -1.;
+
+  int maxBin = hist->GetMaximumBin();
+  float maxVal = hist->GetBinContent(maxBin) - baseline;
+
+  if (maxVal < threshold) return -1.;
+
+  float tt1 = 0;
+  int nBint1 = 0;
+
+  for (int ibin=3; ibin<=maxBin; ibin++) {
+
+    if (hist->GetBinContent(ibin) - baseline > threshold) {
+      tt1 = hist->GetBinLowEdge(ibin);
+      nBint1 = ibin;
+      break;
+    }
+  }
+
+  // Return simple threshold crossing point (uncomment for debugging)
+ // return tt1;
+
+  if (0.9*maxVal < threshold) {
+    return tt1 - risetime;
+  }
+
+  if (maxVal*fraction < threshold) {
+
+    for (int ibin=nBint1; ibin<=maxBin; ibin++) {
+
+      if (hist->GetBinContent(ibin) - baseline > 0.9*maxVal) {
+        return hist->GetBinLowEdge(ibin) - risetime;
+      }
+    }
+
+  } // maxVal < 2*threshold
+
+  /*** Constant fraction for tall signals ***/
+
+  float endfit = 0;
+  int endFitBin = 0;
+  float startfit = 0;
+  int startFitBin = 0;
+
+  // Fraction how far to integrate in both directions from the crossing point
+  float fspan = 0.5;
+
+  if (maxVal*fraction*(1.-fspan) < 2*threshold) {
+    startfit = tt1;
+    startFitBin = nBint1;
+    for (int ibin=nBint1; ibin<=maxBin; ibin++) {
+      if (hist->GetBinContent(ibin) - baseline > 2*fraction*maxVal-threshold) {
+        endfit = hist->GetBinLowEdge(ibin+1);
+        endFitBin = ibin;
+        break;
+      }
+    }
+  }
+  else { // Threshold is below (1.-fspan) of const fraction
+    for (int ibin=nBint1; ibin<=maxBin; ibin++) {
+      if (hist->GetBinContent(ibin) - baseline > maxVal*fraction*(1.-fspan)) {
+        startfit = hist->GetBinLowEdge(ibin);
+        startFitBin = ibin;
+        break;
+      }
+    }
+    for (int ibin=nBint1; ibin<=maxBin; ibin++) {
+      if (hist->GetBinContent(ibin) - baseline > maxVal*fraction*(1.+fspan)) {
+        endfit = hist->GetBinLowEdge(ibin+1);
+        endFitBin = ibin;
+        break;
+      }
+    }
+  } // Selection startfit and endfit
+
+  assert (startFitBin <= endFitBin);
+  if (startFitBin == endFitBin) {
+    startFitBin--;
+    endFitBin++;
+  }
+
+  if (startFitBin+1 == endFitBin) {
+    endFitBin++;
+  }
+
+  float sumt=0, sumw=0;
+
+  for (int ibin=startFitBin; ibin<endFitBin; ibin++) {
+//    float w = exp( -fabs(hist->GetBinContent(ibin)/maxVal-fraction)/fspan );
+    // cusp weighting
+    float w = 1. - sqrt(fabs(hist->GetBinContent(ibin)/maxVal-fraction)/fspan);
+    sumt += hist->GetBinLowEdge(ibin) * w;
+    sumw += w;
+  }
+
+ //  t0 = v0/maxVal; // Replacing time by actual fraction (for debugging)
+  float t0 = sumt / sumw;
+
+  return t0 ;
+}
+
+
+void WaveProcessor::RemoveSpikes(float threshold, short spikeWidth)
+  {
+	  int kNumberOfBins(NBINS);
+     int spikePos[kNumberOfBins];
+     memset(spikePos, 0, sizeof(spikePos));
+
+     const unsigned nChan = 4;
+     int sp[nChan][10];
+     int rsp[10];
+     int n_sp[nChan], n_rsp;
+     int  nNeighbor, nSymmetric;
+
+
+     memset(sp, 0, sizeof(sp));
+     memset(n_sp, 0, sizeof(n_sp));
+     memset(rsp, 0, sizeof(rsp));
+     n_rsp = 0;
+
+
+     /* find spikes with a high-pass filter */
+     for (unsigned iChan=0 ; iChan<nChan ; iChan++) {
+
+        for (unsigned ibin=0 ; ibin<kNumberOfBins-1 ; ibin++) {
+
+           float diff = - ( BinVoltage[iChan][ibin] ) / 2;
+           for (unsigned spikeBin=1; spikeBin<=spikeWidth; spikeBin++) {
+             diff += (BinVoltage[iChan][(ibin+spikeBin) % kNumberOfBins]) / spikeWidth;
+           }
+           diff -= ( BinVoltage[iChan][(ibin+spikeWidth+1) % kNumberOfBins] ) / 2;
+
+           float slope = ( BinVoltage[iChan][(ibin+spikeWidth+1) % kNumberOfBins] )
+                       - ( BinVoltage[iChan][ibin] ) ;
+
+           if (diff > threshold && diff > slope) {
+             n_sp[iChan]++;
+             sp[iChan][n_sp[iChan]] = ibin;
+             spikePos[ibin]++;
+           }
+        } // Loop over bins
+     } // Loop over chans
+
+     /* go through all spikes and look for neighbors */
+     for (unsigned iChan=0 ; iChan<nChan ; iChan++) {
+        for (unsigned ispike =0 ; ispike<n_sp[iChan] ; ispike++) {
+
+           /* check if there is a spike at the same position in other channels */
+           nNeighbor=0;
+           for (unsigned jChan=0 ; jChan<nChan ; jChan++) {
+              if (iChan != jChan) {
+                 for (unsigned lspike=0 ; lspike<n_sp[jChan] ; lspike++)
+                    if ( sp[iChan][ispike] == sp[jChan][lspike] )
+                    {
+                       nNeighbor++;
+                       break;
+                    }
+              }
+           }
+
+
+           /* if at least two matching spikes, treat this as a real spike */
+           if (nNeighbor >= 2) {
+              // Check if this spike is already registered as real
+              unsigned jspike;
+              for (jspike=0 ; jspike<n_rsp ; jspike++)
+                 if (rsp[jspike] == sp[iChan][ispike])
+                    break;
+              // If not registered, register
+              if (n_rsp < 100 && jspike == n_rsp)
+                 rsp[n_rsp++] = sp[iChan][ispike];
+           }
+        }
+     } // End search for neighbors
+
+     if (n_rsp > 10) {
+       std::cout << "WARNING: More than 10 spikes in event!\n";
+     }
+
+
+     /* Correct spikes */
+     for (unsigned ispike=0 ; ispike<n_rsp ; ispike++) {
+        for (unsigned iChan=0 ; iChan<nChan ; iChan++) {
+          /* remove single spike */
+          float x = BinVoltage[iChan][rsp[ispike]];
+          float y = BinVoltage[iChan][(rsp[ispike]+spikeWidth+1) % kNumberOfBins];
+
+          double slope = static_cast<double>(y-x)/(spikeWidth+1);
+          for (unsigned spikeBin=1; spikeBin<=spikeWidth; spikeBin++) {
+            BinVoltage[iChan][(rsp[ispike]+spikeBin) % kNumberOfBins] = (x + spikeBin*slope);
+          }
+        } // Loop over iChan
+     } // Loop over ispike
+
+
+     /* find spikes at cell #0 and #1023*/
+     for (unsigned iChan=0 ; iChan<nChan ; iChan++) {
+
+        float diff = 0;
+        for (unsigned spikeBin=0; spikeBin<spikeWidth; spikeBin++) {
+          diff += (BinVoltage[iChan][spikeBin]) / spikeWidth;
+        }
+        diff -= (BinVoltage[iChan][spikeWidth]);
+
+        // Correct immediately. False spikes have low impact here.
+        if ( fabs(diff) > threshold) {
+          for (unsigned spikeBin=0; spikeBin<spikeWidth; spikeBin++) {
+             BinVoltage[iChan][spikeBin] = BinVoltage[iChan][spikeWidth];
+          }
+        }
+
+        diff = 0;
+        for (unsigned spikeBin=kNumberOfBins-spikeWidth; spikeBin<kNumberOfBins; spikeBin++) {
+          diff += (BinVoltage[iChan][spikeBin]) / spikeWidth;
+        }
+        diff -= (BinVoltage[iChan][kNumberOfBins-spikeWidth-1]);
+
+        // Correct immediately. False spikes have low impact here.
+        if (fabs(diff) > threshold) {
+          for (unsigned spikeBin=kNumberOfBins-spikeWidth; spikeBin<kNumberOfBins; spikeBin++) {
+             BinVoltage[iChan][spikeBin] = BinVoltage[iChan][kNumberOfBins-spikeWidth-1];
+          }
+        }
+     }
+
+} // RemoveSpikes()
+
+void WaveProcessor::FillTotHistograms(Float_t ArTm1, Float_t ArTm2, Float_t ArTm3, Float_t ArTm4){
+Float_t BinContent;
+int i, j, ArBin, Nbins(NBINS);
+
+	for (j=1; j<=No_of_Ch; j++){
+		for (i=0; i<Nbins; i++){
+			switch (j+1) {
+				case 1: ArBin = TempShapeCh1->FindBin(ArTm1); BinContent=TempShapeCh1->GetBinContent((ArBin+i)%(Nbins)); break;
+				case 2: ArBin = TempShapeCh2->FindBin(ArTm2); BinContent=TempShapeCh2->GetBinContent((ArBin+i)%(Nbins)); break;
+				case 3: ArBin = TempShapeCh3->FindBin(ArTm3); BinContent=TempShapeCh3->GetBinContent((ArBin+i)%(Nbins)); break;
+				case 4: ArBin = TempShapeCh4->FindBin(ArTm4); BinContent=TempShapeCh4->GetBinContent((ArBin+i)%(Nbins)); break;
+			}
+			
+			if (DEBUG) cout<<"j:"<<j<<", i:"<<i<<", ArBin="<<ArBin<<", BinContent="<<BinContent<<endl;
+		TotShape[j]->SetBinContent((40+i)%Nbins, BinContent); 
+		}
+	}
+
+}
 
 
 

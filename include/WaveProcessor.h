@@ -12,16 +12,18 @@
 #define DEBUG 0
 #define DEBUG2 0 // 
 #define DEBUG3 0 // CreateHistograms debug (
-#define CHPM1 1
-#define CHPM2 2
-#define CHS3 3
-#define CHS4 4
+#define CHPM1 1 // first scintillator
+#define CHPM2 2 // second
+#define CHS3 3 // ch of first trigger
+#define CHS4 4 // ch of second trigger
 #define BASELINE 4 // ad-hoc baseline in mV
+#define NBINS 1024 // usually for DRS4 it's 1024 ...
 
 
 
 #include <string>
 #include <fstream>
+#include <assert.h>
 
 
 // root
@@ -112,19 +114,20 @@ class WaveProcessor {
     void SetNoOfChannels(int Ch) {No_of_Ch = Ch;}
     int GetNoOfChannels() const {return No_of_Ch;}
     
+    
     void InitializeAnalysisTree();
     void set_time_calibration (int,int,float); // CH, bin, value
     float get_time_calibration (int,int) const;
     void set_bin_time_n_voltage (int, int, SSHORT, SSHORT, USHORT);
 
 
-    /// ch1 is allways the referent one !!!!!!!
     void allignCells0(unsigned short); // align cell #0 of all channels
     void CreateTempHistograms(); // fill the histograms with the colected waveforms of one event, one histogram per channel
     void DeleteTempHistograms(); // they must be deleted at the end of each event
-    //TH1F* GetHistogram(int) const; // return the histogram of given chanel
+    TH1F* GetTotHist(int Ch) const {return TotShape[Ch];}; // return the histogram of given chanel
     TH1F* GetTempHist(int) const;
     void PrintCurrentHist(int) const; // print pdf of temporary histogram (TempShape) of given channel
+    void FillTotHistograms(Float_t ArTm1, Float_t ArTm2, Float_t ArTm3, Float_t ArTm4);
 
 // analysis methods
 
@@ -143,6 +146,11 @@ class WaveProcessor {
     private:										// PRIVATE:
        
     static float CalcHistRMS(const TH1F*, int, int );
+    static float MeanAndRMS(const TH1F*, int first, int last, float &mean, float &rms);
+    static float ArrivalTime(TH1F*, float threshold, float baseline,
+                                    float risetime, float fraction = 0.2);
+    void RemoveSpikes(float, short); // removes spikes of given threshold (float) in mV and given width (in bins) - usually 2
+                                    
     
     TFile* f;
 	TTree* paramTree;
@@ -158,7 +166,7 @@ class WaveProcessor {
     bool aligned; // flag that the 0 cells of chanels are aligned
     int No_of_Ch;
     
-    WaveformParam WFParamPM1, WFParamPM2;
+    WaveformParam WFParamPM1, WFParamPM2, WFParamS3, WFParamS4;
         
     float TimeBinWidth[5][1024]; // this is the time width of given bin according to the calibration
     float BinVoltage[5][1024]; // this is the voltage of the given bin, for us (-0.5 V, +0.5 V)
@@ -169,6 +177,8 @@ class WaveProcessor {
     TH1F* TempShapeCh2;
     TH1F* TempShapeCh3;     
     TH1F* TempShapeCh4;
+    
+    TH1F* TotShape[5];
     
     TH1F* RawTempShape;
   
