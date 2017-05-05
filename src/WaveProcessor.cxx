@@ -40,6 +40,9 @@ void WaveProcessor::InitializeAnalysisTree(){
 	paramTree = new TTree("paramTree","Tree with parameters of the waveforms");
 	//PM1	
 	paramTree -> Branch("arrivalTimePM1",&WFParamPM1.arrivalTime,"arrivalTimePM1/F");
+	paramTree -> Branch("arrivalTimeRawPM1",&WFParamPM1.arrivalTimeRaw,"arrivalTimeRawPM1/F");
+	paramTree -> Branch("arrivalTime2PM1",&WFParamPM1.arrivalTime2,"arrivalTime2PM1/F");
+	paramTree -> Branch("arrivalTimeCorrectedPM1",&WFParamPM1.arrivalTimeCorrected,"arrivalTimeCorrectedPM1/F");	
 	paramTree -> Branch("EtotPM1",&WFParamPM1.Etot,"EtotPM1/F");
 	paramTree -> Branch("T90PM1",&WFParamPM1.T90,"T90PM1/F");
 	paramTree -> Branch("T70PM1",&WFParamPM1.T70,"T70PM1/F");
@@ -52,6 +55,9 @@ void WaveProcessor::InitializeAnalysisTree(){
 	paramTree -> Branch("FW10pcntMPM1",&WFParamPM1.FW10pcntM,"FWH10pcntPM1/F");	
 	//PM2
 	paramTree -> Branch("arrivalTimePM2",&WFParamPM2.arrivalTime,"arrivalTimePM2/F");
+	paramTree -> Branch("arrivalTimeRawPM2",&WFParamPM2.arrivalTimeRaw,"arrivalTimeRawPM2/F");
+	paramTree -> Branch("arrivalTime2PM2",&WFParamPM2.arrivalTime2,"arrivalTime2PM2/F");
+	paramTree -> Branch("arrivalTimeCorrectedPM2",&WFParamPM2.arrivalTimeCorrected,"arrivalTimeCorrectedPM2/F");
 	paramTree -> Branch("EtotPM2",&WFParamPM2.Etot,"EtotPM2/F");
 	paramTree -> Branch("T90PM2",&WFParamPM2.T90,"T90PM2/F");
 	paramTree -> Branch("T70PM2",&WFParamPM2.T70,"T70PM2/F");
@@ -62,7 +68,8 @@ void WaveProcessor::InitializeAnalysisTree(){
 	paramTree -> Branch("Eof10nsPM2",&WFParamPM2.Eof10ns,"Eof10nsPM2/F");
 	paramTree -> Branch("FWHMPM2",&WFParamPM2.FWHM,"FWHMPM2/F");
 	paramTree -> Branch("FW10pcntMPM2",&WFParamPM2.FW10pcntM,"FWH10pcntPM2/F");	
-	//PM the rest - later
+	//tref
+	paramTree -> Branch("TimeRef", &TimeRef, "TimeRef/F");
 	
 	
 }
@@ -129,17 +136,22 @@ void WaveProcessor::ProcessFile(char* filename){
 	SSHORT aux_SSHORT;
 	USHORT trigCell;
 	string string1;
-      
+	float t3,t4;
+ 
+ /*     
     WaveformParam WFParamCh1; // for one counter of the scintillator counter
 	WaveformParam WFParamCh2; // for the other one
 	WaveformParam WFParamCh3; 
 	WaveformParam WFParamCh4; 
+
+	
 	
 	TH1F* FWHMCh1 = new TH1F("FWHMCh1", "FWHM of S1", 100, 4, 15);
 	TH1F* FWHMCh2 = new TH1F("FWHMCh2", "FWHM of S2", 100, 4, 15);
 	TH1F* FWHMCh3 = new TH1F("FWHMCh3", "FWHM of S3", 100, 4, 15);
 	TH1F* FWHMCh4 = new TH1F("FWHMCh4", "FWHM of S4", 100, 4, 15);
-	
+*/
+
 	//string1="root/";
 	//string1.append(filename);
 	string1="";
@@ -254,6 +266,7 @@ if(DAfile.is_open())
 			
 			if (DEBUG) cout<<"Create and fill histograms of an event: "<<eventID<<endl;
 
+			// CreateTempHistograms() will set bins 0,1, 1023,1022,1021 and 1020 same as bin 3 ... , because these bin have spikes-gliches
 			 CreateTempHistograms(); // <slower procedure>
 			 
 			 
@@ -272,6 +285,15 @@ if(DAfile.is_open())
 			if (ChCounter>=CHS3) WFParamS3 =  give_waveform_parameters(CHS3); 
 			if (ChCounter>=CHS4) WFParamS4 =  give_waveform_parameters(CHS4);
 			
+			t3 = ArrivalTime (GetTempHist(CHS3), getTriggerHeght(), WFParamS3.baseLine, 3., 0.4);
+			t4 = ArrivalTime (GetTempHist(CHS4), getTriggerHeght(), WFParamS4.baseLine, 3., 0.4);
+			
+			TimeRef=(t4+t3)/2;
+			
+			WFParamPM1.arrivalTimeCorrected = WFParamPM1.arrivalTime - TimeRef + 30.; 
+			WFParamPM2.arrivalTimeCorrected = WFParamPM2.arrivalTime - TimeRef + 30.; 			
+			// 30 ns added just to put peaks on the Total histograms, where they are usually
+			
 			if (DEBUG) cout<<"Filling the tree..."<<flush<<endl;
 			paramTree -> Fill();
 			if (DEBUG) cout<<"The tree filled."<<flush<<endl;
@@ -284,7 +306,7 @@ if(DAfile.is_open())
 			{ 
 				cnttmp++;
 				PrintCurrentHist(1);
-				//PrintCurrentHist(4);
+				PrintCurrentHist(4);
 				cout<<"baseLine="<<WFParamPM1.baseLine<<", baseLineRMS="<<WFParamPM1.baseLineRMS<<", maxVal="<<WFParamPM1.maxVal
 				<<", FW10pcntM="<<WFParamPM1.FW10pcntM<<endl;
 			}
@@ -336,6 +358,7 @@ void WaveProcessor::CreateTempHistograms(){
 			//time_aux[i] = TimeBinVoltage [j][i];
 			if (DEBUG3) cout<<"Allocation time_aux["<<i<<"]="<<TimeBinVoltage [j][i]<<endl;
 		}
+
 		
 		// temporary histograms for time shape, must be deleted after each event because they are rebinned each time
 		// it has to be done since the bins' widths are different, after the "rotation" every bin will not come in the coresponding
@@ -353,38 +376,51 @@ void WaveProcessor::CreateTempHistograms(){
 	
 	if (DEBUG3) cout<<"FillHistograms, No of Channels: "<<No_of_Ch<<endl;
 	
-	for (int j=1; j<=No_of_Ch; j++){
-	//if(DEBUG) cout <<"j in FillHistograms: "<<j<<endl;
-	for (int i=0; i<1024; i++){
-		//if(DEBUG) cout <<"i in FillHistograms: "<<i<<endl;
-		if (DEBUG3) cout<<"BinVoltage["<<j<<"]["<<i<<"]="<<BinVoltage[j][i]<<endl;
-		if (DEBUG3) cout<<"TimeBinVoltage["<<j<<"]["<<i<<"]="<<TimeBinVoltage[j][i]<<endl;
+			
 
-/*		
-		switch (j) {
-			case 1: TempShapeCh1->Fill(TimeBinVoltage[j][i], BinVoltage[j][i]); break;
-			case 2: TempShapeCh2->Fill(TimeBinVoltage[j][i], BinVoltage[j][i]); break;
-			case 3: TempShapeCh3->Fill(TimeBinVoltage[j][i], BinVoltage[j][i]); break;
-			case 4: TempShapeCh4->Fill(TimeBinVoltage[j][i], BinVoltage[j][i]); break;
-		}
-*/
-// Filling is done by the SetbinContent, because it's faster and now it's OK since the widths are also rotated...
-// May, 3 2017
-		switch (j) {
-			case 1: TempShapeCh1->SetBinContent(i, BinVoltage[j][i]); break;
-			case 2: TempShapeCh2->SetBinContent(i, BinVoltage[j][i]); break;
-			case 3: TempShapeCh3->SetBinContent(i, BinVoltage[j][i]); break;
-			case 4: TempShapeCh4->SetBinContent(i, BinVoltage[j][i]); break;
-		}
+	
+	for (int j=1; j<=No_of_Ch; j++){
 		
-		if (DEBUG3) pomi = TempShapeCh1->FindBin(TimeBinVoltage[j][i]);
-		if (DEBUG3) cout<<"Filling the bin No: "<< pomi <<endl;
-		if (DEBUG3) cout<<"Left bin edge:"<<TempShapeCh1->GetXaxis()->GetBinLowEdge(pomi)<<", Right Edge: "<<(TempShapeCh1->GetXaxis()->GetBinLowEdge(pomi)+TempShapeCh1->GetXaxis()->GetBinWidth(pomi))<<endl;
-		if (DEBUG3) cout<<"TempShapeCh1(TimeBinVoltage)="<<TempShapeCh1->GetBinContent(TempShapeCh1->FindBin(TimeBinVoltage[j][i]))<<flush<<endl<<endl;
+		// the bins 0,1, 1023, 1022, 1021, 1020 have very high spikes too often 
+		BinVoltage[j][0] = BinVoltage[j][3];
+		BinVoltage[j][1] = BinVoltage[j][4];
+		for (int k=0; k<4; k++){
+			BinVoltage[j][1023-k] = BinVoltage[j][1019-k];
+		}
+			
+		//if(DEBUG) cout <<"j in FillHistograms: "<<j<<endl;
+		for (int i=0; i<1024; i++){
+			//if(DEBUG) cout <<"i in FillHistograms: "<<i<<endl;
+			if (DEBUG3) cout<<"BinVoltage["<<j<<"]["<<i<<"]="<<BinVoltage[j][i]<<endl;
+			if (DEBUG3) cout<<"TimeBinVoltage["<<j<<"]["<<i<<"]="<<TimeBinVoltage[j][i]<<endl;
+
+	/*		
+			switch (j) {
+				case 1: TempShapeCh1->Fill(TimeBinVoltage[j][i], BinVoltage[j][i]); break;
+				case 2: TempShapeCh2->Fill(TimeBinVoltage[j][i], BinVoltage[j][i]); break;
+				case 3: TempShapeCh3->Fill(TimeBinVoltage[j][i], BinVoltage[j][i]); break;
+				case 4: TempShapeCh4->Fill(TimeBinVoltage[j][i], BinVoltage[j][i]); break;
+			}
+	*/
+	// Filling is done by the SetbinContent, because it's faster and now it's OK since the widths are also rotated...
+	// May, 3 2017
+			switch (j) {
+				case 1: TempShapeCh1->SetBinContent(i, BinVoltage[j][i]); break;
+				case 2: TempShapeCh2->SetBinContent(i, BinVoltage[j][i]); break;
+				case 3: TempShapeCh3->SetBinContent(i, BinVoltage[j][i]); break;
+				case 4: TempShapeCh4->SetBinContent(i, BinVoltage[j][i]); break;
+			}
+			
+			if (DEBUG3) pomi = TempShapeCh1->FindBin(TimeBinVoltage[j][i]);
+			if (DEBUG3) cout<<"Filling the bin No: "<< pomi <<endl;
+			if (DEBUG3) cout<<"Left bin edge:"<<TempShapeCh1->GetXaxis()->GetBinLowEdge(pomi)<<", Right Edge: "<<(TempShapeCh1->GetXaxis()->GetBinLowEdge(pomi)+TempShapeCh1->GetXaxis()->GetBinWidth(pomi))<<endl;
+			if (DEBUG3) cout<<"TempShapeCh1(TimeBinVoltage)="<<TempShapeCh1->GetBinContent(TempShapeCh1->FindBin(TimeBinVoltage[j][i]))<<flush<<endl<<endl;
 		
 		}// end loop i	
 	}// end loop j
 	
+
+		
 	
 	
 }
@@ -562,8 +598,6 @@ WaveformParam output; //how many parameters to be returned
 	output.baseLine = AnalysisHist->Integral(0, AnalysisHist->FindBin(35.-delay), "width") / (35.-delay) ; 
 	output.baseLineRMS = CalcHistRMS(AnalysisHist, 1, AnalysisHist->FindBin(35.-delay));
 
-	// this line is for constant fraction discrimination :
-	// output.arrivalTime = ArrivalTime(AnalysisHist, triggerHeight, baseLine, 3., 0.2); // risetime 3. ns, by eye, fraction 0.2
 
 	int ArrivalTimeBin = AnalysisHist->FindFirstBinAbove(triggerHeight+output.baseLine); // bin should be transformed to ns according to axis
 	
@@ -576,9 +610,13 @@ WaveformParam output; //how many parameters to be returned
 			output.arrivalTime = 0.; // indicates that something is wrong
 		//return output; 
 		} //exit(1);}
-	output.arrivalTime = AnalysisHist->GetXaxis()->GetBinCenter(ArrivalTimeBin);
+	output.arrivalTimeRaw = AnalysisHist->GetXaxis()->GetBinCenter(ArrivalTimeBin);
 	
-	
+	// this line is for constant fraction discrimination :
+	output.arrivalTime = ArrivalTime(AnalysisHist, triggerHeight, output.baseLine, 3., 0.4); // risetime 3. ns, by eye, fraction 0.2
+
+	output.arrivalTime2 = ArrivalTime2(AnalysisHist, output.baseLine, 0.3); // last nuber is a fraction at 
+
 	output.FWHM = GetFWHM(Ch, output.baseLine);
 	output.FW10pcntM = GetFWHM(Ch, output.baseLine, 10);
 	
@@ -737,7 +775,7 @@ float WaveProcessor::MeanAndRMS(const TH1F *hist, int first, int last, float &me
 
 
 float WaveProcessor::ArrivalTime(TH1F* hist, float threshold, float baseline,
-                                  float risetime, float fraction) // risetime=3ns, saw by eye 
+                                  float risetime, float fraction) // risetime=3ns, saw by eye as interrupt of arrival time of low amplitude signals
 {
 
   if ( !hist ) return -1.;
@@ -973,7 +1011,7 @@ int i, j, ArBin, Nbins(NBINS);
 
 	for (j=1; j<=No_of_Ch; j++){
 		for (i=0; i<Nbins; i++){
-			switch (j+1) {
+			switch (j) {
 				case 1: ArBin = TempShapeCh1->FindBin(ArTm1); BinContent=TempShapeCh1->GetBinContent((ArBin+i)%(Nbins)); break;
 				case 2: ArBin = TempShapeCh2->FindBin(ArTm2); BinContent=TempShapeCh2->GetBinContent((ArBin+i)%(Nbins)); break;
 				case 3: ArBin = TempShapeCh3->FindBin(ArTm3); BinContent=TempShapeCh3->GetBinContent((ArBin+i)%(Nbins)); break;
@@ -981,11 +1019,33 @@ int i, j, ArBin, Nbins(NBINS);
 			}
 			
 			if (DEBUG) cout<<"j:"<<j<<", i:"<<i<<", ArBin="<<ArBin<<", BinContent="<<BinContent<<endl;
-		TotShape[j]->SetBinContent((40+i)%Nbins, BinContent); 
+		TotShape[j]->SetBinContent((70+i)%Nbins, TotShape[j]->GetBinContent((70+i)%Nbins)+BinContent); 
 		}
 	}
 
 }
 
+float WaveProcessor::ArrivalTime2(TH1F* hist, float baseLine, float fraction){
+	float tArrival;
+	int i;
+	Int_t maxBin = hist->GetMaximumBin();
+	Float_t maxVal = hist->GetMaximum()-baseLine;
+
+	Float_t thrsBin = hist->FindFirstBinAbove(triggerHeight+baseLine);
+	if ((maxVal*fraction)>triggerHeight) tArrival = hist->GetXaxis()->GetBinLowEdge(hist->FindFirstBinAbove(maxVal*fraction+baseLine));
+	else {
+		for (i=0; i<20; i++){ // 10 bins-> 2 ns, the 10% of amplitude cannot be more than 2 ns before thrs
+			if (hist->GetBinContent(thrsBin-i)<(maxVal*fraction+baseLine)) 
+				{tArrival = hist->GetXaxis()->GetBinUpEdge(thrsBin-i); i=100;}
+			}
+		if (i!=100) { 
+			// couldn't find the fraction of maxVal (probably because the base line is higher just before the peak)
+			// thus extrapolation to fraction*maxVal ..
+			tArrival = hist->GetXaxis()->GetBinLowEdge((int)((maxBin-thrsBin)/(maxVal-triggerHeight)*(0.1*maxVal)+0.5)); 
+		}
+			
+	}
+return tArrival;
+}
 
 

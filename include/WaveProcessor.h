@@ -65,6 +65,9 @@ struct date {
 
 struct WaveformParam {
     Float_t arrivalTime;
+    Float_t arrivalTime2;
+    Float_t arrivalTimeRaw;  
+    Float_t arrivalTimeCorrected;  
     Float_t Etot;
     Float_t T90;
     Float_t T70;
@@ -147,8 +150,9 @@ class WaveProcessor {
        
     static float CalcHistRMS(const TH1F*, int, int );
     static float MeanAndRMS(const TH1F*, int first, int last, float &mean, float &rms);
-    static float ArrivalTime(TH1F*, float threshold, float baseline,
-                                    float risetime, float fraction = 0.2);
+    static float ArrivalTime(TH1F*, float, float, float, float);
+    float ArrivalTime2(TH1F*, float, float);
+    
     void RemoveSpikes(float, short); // removes spikes of given threshold (float) in mV and given width (in bins) - usually 2
                                     
     
@@ -166,7 +170,9 @@ class WaveProcessor {
     bool aligned; // flag that the 0 cells of chanels are aligned
     int No_of_Ch;
     
+    // root TTree variables
     WaveformParam WFParamPM1, WFParamPM2, WFParamS3, WFParamS4;
+    Float_t TimeRef;
         
     float TimeBinWidth[5][1024]; // this is the time width of given bin according to the calibration
     float BinVoltage[5][1024]; // this is the voltage of the given bin, for us (-0.5 V, +0.5 V)

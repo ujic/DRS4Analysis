@@ -83,7 +83,7 @@ int main (int argc, const char * argv[]) {
 	
 	cout<<"DA.cxx"<<flush<<endl;
 	
-	dateStamp = DataHandler->getDateStamp();
+	//dateStamp = DataHandler->getDateStamp();
 	
 // ANALYSIS ....
 
