@@ -130,7 +130,8 @@ class WaveProcessor {
     TH1F* GetTotHist(int Ch) const {return TotShape[Ch];}; // return the histogram of given chanel
     TH1F* GetTempHist(int) const;
     void PrintCurrentHist(int) const; // print pdf of temporary histogram (TempShape) of given channel
-    void FillTotHistograms(Float_t ArTm1, Float_t ArTm2, Float_t ArTm3, Float_t ArTm4);
+    void FillTotHistograms(Float_t, Float_t, Float_t, Float_t);
+    void FillTotHistogramsNonAlligned();
 
 // analysis methods
 
@@ -169,6 +170,7 @@ class WaveProcessor {
     int baseLineCNT;
     bool aligned; // flag that the 0 cells of chanels are aligned
     int No_of_Ch;
+    int NullEventCNT;
     
     // root TTree variables
     WaveformParam WFParamPM1, WFParamPM2, WFParamS3, WFParamS4;
@@ -185,6 +187,8 @@ class WaveProcessor {
     TH1F* TempShapeCh4;
     
     TH1F* TotShape[5];
+    
+    TH1F* TotShapeNA[5];
     
     TH1F* RawTempShape;
   

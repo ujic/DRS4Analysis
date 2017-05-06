@@ -12,7 +12,7 @@ using namespace DRS4_data;
 
 WaveProcessor::WaveProcessor() :
     triggerHeight(0), delay(0), eventID(0), baseLineAVG(BASELINE), baseLineCNT(0),
-    aligned(false), No_of_Ch(0),
+    aligned(false), No_of_Ch(0), NullEventCNT(0),
     TempShapeCh1(NULL),
     TempShapeCh2(NULL),
     TempShapeCh3(NULL),
@@ -24,14 +24,28 @@ WaveProcessor::WaveProcessor() :
 	TotShape[2] = new TH1F("TotShapeCh2", "Time Shape of channel 2", NBINS, 0, 200); 
 	TotShape[3] = new TH1F("TotShapeCh3", "Time Shape of channel 3", NBINS, 0, 200); 
 	TotShape[4] = new TH1F("TotShapeCh4", "Time Shape of channel 4", NBINS, 0, 200); 
+	
+	TotShapeNA[0] = new TH1F("Stack", "Stack", NBINS, 0, 200);
+	TotShapeNA[1] = new TH1F("TotShapeNACh1", "Non Alligned time Shape of channel 1", NBINS, 0, 200); 
+	TotShapeNA[2] = new TH1F("TotShapeNACh2", "Non Alligned time Shape of channel 2", NBINS, 0, 200); 
+	TotShapeNA[3] = new TH1F("TotShapeNACh3", "Non Alligned time Shape of channel 3", NBINS, 0, 200); 
+	TotShapeNA[4] = new TH1F("TotShapeNACh4", "Non Alligned time Shape of channel 4", NBINS, 0, 200);
+	
 	}
 
 WaveProcessor::~WaveProcessor(){
 // 
+	delete TotShape[0];
 	delete TotShape[1]; // should work if TimeShapeCh4 is defined i.e. is not a null pointer any more
 	delete TotShape[2];
 	delete TotShape[3];
 	delete TotShape[4];
+	delete TotShapeNA[0];
+	delete TotShapeNA[1]; 
+	delete TotShapeNA[2];
+	delete TotShapeNA[3];
+	delete TotShapeNA[4];
+	
 }
 
 void WaveProcessor::InitializeAnalysisTree(){
@@ -68,6 +82,22 @@ void WaveProcessor::InitializeAnalysisTree(){
 	paramTree -> Branch("Eof10nsPM2",&WFParamPM2.Eof10ns,"Eof10nsPM2/F");
 	paramTree -> Branch("FWHMPM2",&WFParamPM2.FWHM,"FWHMPM2/F");
 	paramTree -> Branch("FW10pcntMPM2",&WFParamPM2.FW10pcntM,"FWH10pcntPM2/F");	
+	// S3
+	paramTree -> Branch("arrivalTimeS3",&WFParamS3.arrivalTime,"arrivalTimeS3/F");
+	paramTree -> Branch("arrivalTimeRawS3",&WFParamS3.arrivalTimeRaw,"arrivalTimeRawS3/F");
+	paramTree -> Branch("arrivalTime2S3",&WFParamS3.arrivalTime2,"arrivalTime2S3/F");
+	paramTree -> Branch("EtotS3",&WFParamS3.Etot,"EtotS3/F");
+	paramTree -> Branch("maxValS3",&WFParamS3.maxVal,"maxValS3/F");
+	paramTree -> Branch("baseLineS3",&WFParamS3.baseLine,"baseLineS3/F");
+	paramTree -> Branch("baseLineRMSS3",&WFParamS3.baseLineRMS,"baseLineRMSS3/F");
+	// S4
+	paramTree -> Branch("arrivalTimeS4",&WFParamS4.arrivalTime,"arrivalTimeS4/F");
+	paramTree -> Branch("arrivalTimeRawS4",&WFParamS4.arrivalTimeRaw,"arrivalTimeRawS4/F");
+	paramTree -> Branch("arrivalTime2S4",&WFParamS4.arrivalTime2,"arrivalTime2S4/F");
+	paramTree -> Branch("EtotS4",&WFParamS4.Etot,"EtotS4/F");
+	paramTree -> Branch("maxValS4",&WFParamS4.maxVal,"maxValS4/F");
+	paramTree -> Branch("baseLineS4",&WFParamS4.baseLine,"baseLineS4/F");
+	paramTree -> Branch("baseLineRMSS4",&WFParamS4.baseLineRMS,"baseLineRMSS4/F");
 	//tref
 	paramTree -> Branch("TimeRef", &TimeRef, "TimeRef/F");
 	
@@ -137,6 +167,7 @@ void WaveProcessor::ProcessFile(char* filename){
 	USHORT trigCell;
 	string string1;
 	float t3,t4;
+	TH1F *tr = new TH1F("TRef","Time reference distribution", 1000, 0, 100);
  
  /*     
     WaveformParam WFParamCh1; // for one counter of the scintillator counter
@@ -290,6 +321,8 @@ if(DAfile.is_open())
 			
 			TimeRef=(t4+t3)/2;
 			
+
+			
 			WFParamPM1.arrivalTimeCorrected = WFParamPM1.arrivalTime - TimeRef + 30.; 
 			WFParamPM2.arrivalTimeCorrected = WFParamPM2.arrivalTime - TimeRef + 30.; 			
 			// 30 ns added just to put peaks on the Total histograms, where they are usually
@@ -298,7 +331,9 @@ if(DAfile.is_open())
 			paramTree -> Fill();
 			if (DEBUG) cout<<"The tree filled."<<flush<<endl;
 			FillTotHistograms(WFParamPM1.arrivalTime, WFParamPM2.arrivalTime, WFParamS3.arrivalTime, WFParamS4.arrivalTime);
-	
+			if (DEBUG) cout<<"Filling FillTotHistogramsNonAlligned..."<<flush<<endl;
+			FillTotHistogramsNonAlligned();
+			if (DEBUG) cout<<"Total histograms filled."<<flush<<endl;
 			
 		
 
@@ -331,6 +366,14 @@ TotShape[1]->Write();
 TotShape[2]->Write();
 TotShape[3]->Write();
 TotShape[4]->Write();
+TotShapeNA[1]->Write();
+TotShapeNA[2]->Write();
+TotShapeNA[3]->Write();
+TotShapeNA[4]->Write();
+tr->Write();
+
+cout<<"Null Event % = "<<((float)NullEventCNT/2.)/(float)eventID*100<<endl; // Null event is sum both for PM1 and PM2
+
 paramTree -> Write();
 
 cout<<"Tree writen..., closing root file..."<<flush<<endl;
@@ -606,7 +649,8 @@ WaveformParam output; //how many parameters to be returned
 	
 	if (ArrivalTimeBin==-1) { 
 		//cout<<"In give_waveform_parameters, couldn't find the signal. Empty histogram or the threshold is too high! returning 0..."<<flush<<endl; 
-			cout<<"Null Event ID: "<<eventID<<endl;
+			//cout<<"Null Event ID: "<<eventID<<endl;
+			NullEventCNT++;
 			output.arrivalTime = 0.; // indicates that something is wrong
 		//return output; 
 		} //exit(1);}
@@ -615,7 +659,7 @@ WaveformParam output; //how many parameters to be returned
 	// this line is for constant fraction discrimination :
 	output.arrivalTime = ArrivalTime(AnalysisHist, triggerHeight, output.baseLine, 3., 0.4); // risetime 3. ns, by eye, fraction 0.2
 
-	output.arrivalTime2 = ArrivalTime2(AnalysisHist, output.baseLine, 0.3); // last nuber is a fraction at 
+	output.arrivalTime2 = ArrivalTime2(AnalysisHist, output.baseLine, 0.4); // last nuber is a fraction at 
 
 	output.FWHM = GetFWHM(Ch, output.baseLine);
 	output.FW10pcntM = GetFWHM(Ch, output.baseLine, 10);
@@ -1009,6 +1053,8 @@ void WaveProcessor::FillTotHistograms(Float_t ArTm1, Float_t ArTm2, Float_t ArTm
 Float_t BinContent;
 int i, j, ArBin, Nbins(NBINS);
 
+//ArBinAV = (int)(float(TempShapeCh3->FindBin(ArTm3)+TempShapeCh4->FindBin(ArTm4))/.2 +0.5);
+
 	for (j=1; j<=No_of_Ch; j++){
 		for (i=0; i<Nbins; i++){
 			switch (j) {
@@ -1018,8 +1064,29 @@ int i, j, ArBin, Nbins(NBINS);
 				case 4: ArBin = TempShapeCh4->FindBin(ArTm4); BinContent=TempShapeCh4->GetBinContent((ArBin+i)%(Nbins)); break;
 			}
 			
-			if (DEBUG) cout<<"j:"<<j<<", i:"<<i<<", ArBin="<<ArBin<<", BinContent="<<BinContent<<endl;
-		TotShape[j]->SetBinContent((70+i)%Nbins, TotShape[j]->GetBinContent((70+i)%Nbins)+BinContent); 
+			if (DEBUG2) cout<<"j:"<<j<<", i:"<<i<<", ArBin="<<ArBin<<", BinContent="<<BinContent<<endl;
+		TotShape[j]->SetBinContent((i-185)%Nbins, TotShape[j]->GetBinContent((i-185)%Nbins)+BinContent); 
+		}
+	}
+	//cout<<"exit FillTotHistograms"<<flush<<endl;
+
+}
+
+void WaveProcessor::FillTotHistogramsNonAlligned(){
+Float_t BinContent;
+int i, j, ArBin, Nbins(NBINS);
+
+	for (j=1; j<=No_of_Ch; j++){
+		for (i=0; i<Nbins; i++){
+			switch (j) {
+				case 1: BinContent=TempShapeCh1->GetBinContent(i); break;
+				case 2: BinContent=TempShapeCh2->GetBinContent(i); break;
+				case 3: BinContent=TempShapeCh3->GetBinContent(i); break;
+				case 4: BinContent=TempShapeCh4->GetBinContent(i); break;
+			}
+			
+			if (DEBUG2) cout<<"j:"<<j<<", i:"<<i<<", ArBin="<<ArBin<<", BinContent="<<BinContent<<endl;
+		TotShapeNA[j]->SetBinContent(i, TotShapeNA[j]->GetBinContent(i)+BinContent); 
 		}
 	}
 
@@ -1034,17 +1101,26 @@ float WaveProcessor::ArrivalTime2(TH1F* hist, float baseLine, float fraction){
 	Float_t thrsBin = hist->FindFirstBinAbove(triggerHeight+baseLine);
 	if ((maxVal*fraction)>triggerHeight) tArrival = hist->GetXaxis()->GetBinLowEdge(hist->FindFirstBinAbove(maxVal*fraction+baseLine));
 	else {
+		//cout<<"maxVal="<<maxVal<<endl;
 		for (i=0; i<20; i++){ // 10 bins-> 2 ns, the 10% of amplitude cannot be more than 2 ns before thrs
 			if (hist->GetBinContent(thrsBin-i)<(maxVal*fraction+baseLine)) 
-				{tArrival = hist->GetXaxis()->GetBinUpEdge(thrsBin-i); i=100;}
+				{	
+					//cout<<"maxVal*fraction+baseLine = "<<maxVal*fraction+baseLine<<endl;
+					//cout<<"BinContent of "<<thrsBin-i<<"="<<hist->GetBinContent(thrsBin-i)<<endl;
+					tArrival = hist->GetXaxis()->GetBinUpEdge(thrsBin-i); 
+					i=100;
+				}
 			}
-		if (i!=100) { 
+			//cout<<"i="<<i<<endl;
+		if (i!=101) { 
 			// couldn't find the fraction of maxVal (probably because the base line is higher just before the peak)
 			// thus extrapolation to fraction*maxVal ..
-			tArrival = hist->GetXaxis()->GetBinLowEdge((int)((maxBin-thrsBin)/(maxVal-triggerHeight)*(0.1*maxVal)+0.5)); 
+			tArrival = hist->GetXaxis()->GetBinLowEdge((int)(maxBin-(maxBin-thrsBin)/(maxVal-triggerHeight)*maxVal*(1-fraction)+0.5)); 
+			//cout<<"tArrival extrapolated="<<tArrival<<endl;
 		}
 			
 	}
+	if (tArrival>200.) tArrival=200. ;// sometimes extrapolation gives stupid things when triggers on Null event
 return tArrival;
 }
 
