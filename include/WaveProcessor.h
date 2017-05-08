@@ -107,7 +107,7 @@ class WaveProcessor {
 
     // setget DRS4 waveform analysis parameters
     void setTriggerHeight(float value) {triggerHeight=value;}
-    float getTriggerHeght() const {return triggerHeight;}
+    float getTriggerHeight() const {return triggerHeight;}
     void setDelay(float value) {delay = value;}
     float getDelay() const {return delay;}
     void setEventID(unsigned int value) {eventID = value;}
@@ -131,7 +131,7 @@ class WaveProcessor {
     TH1F* GetTempHist(int) const;
     void PrintCurrentHist(int) const; // print pdf of temporary histogram (TempShape) of given channel
     void FillTotHistograms(Float_t, Float_t, Float_t, Float_t);
-    void FillTotHistogramsNonAlligned();
+    void FillTotHistogramsNonAlligned(Float_t, Float_t, Float_t, Float_t);
 
 // analysis methods
 
@@ -170,7 +170,7 @@ class WaveProcessor {
     int baseLineCNT;
     bool aligned; // flag that the 0 cells of chanels are aligned
     int No_of_Ch;
-    int NullEventCNT;
+    int NullEventCNT[5];
     
     // root TTree variables
     WaveformParam WFParamPM1, WFParamPM2, WFParamS3, WFParamS4;
@@ -186,10 +186,11 @@ class WaveProcessor {
     TH1F* TempShapeCh3;     
     TH1F* TempShapeCh4;
     
-    TH1F* TotShape[5];
-    
-    TH1F* TotShapeNA[5];
-    
+    TH1F* TotShape[5]; // alligned to be at the same start position
+    TH1F* TotShapeNA[5]; // put in the total histogram as it is
+    TH1F* NullEventShape[5]; // total histogram of chanels of PM1 and PM2, when arrivalTime=0 (Null Event)
+							 // this one will be used to subtract the total baseline from the Unit response (muon signals)
+    TH1F* NullEventShapeNA[5]; 
     TH1F* RawTempShape;
   
     

@@ -12,40 +12,48 @@ using namespace DRS4_data;
 
 WaveProcessor::WaveProcessor() :
     triggerHeight(0), delay(0), eventID(0), baseLineAVG(BASELINE), baseLineCNT(0),
-    aligned(false), No_of_Ch(0), NullEventCNT(0),
+    aligned(false), No_of_Ch(0),
     TempShapeCh1(NULL),
     TempShapeCh2(NULL),
     TempShapeCh3(NULL),
     TempShapeCh4(NULL),
     RawTempShape(NULL)
 {
-	TotShape[0] = new TH1F("Stack", "Stack", NBINS, 0, 200);
+	//TotShape[0] = new TH1F("Stack", "Stack", NBINS, 0, 200);
 	TotShape[1] = new TH1F("TotShapeCh1", "Time Shape of channel 1", NBINS, 0, 200); 
 	TotShape[2] = new TH1F("TotShapeCh2", "Time Shape of channel 2", NBINS, 0, 200); 
 	TotShape[3] = new TH1F("TotShapeCh3", "Time Shape of channel 3", NBINS, 0, 200); 
 	TotShape[4] = new TH1F("TotShapeCh4", "Time Shape of channel 4", NBINS, 0, 200); 
 	
-	TotShapeNA[0] = new TH1F("Stack", "Stack", NBINS, 0, 200);
+	//TotShapeNA[0] = new TH1F("StackNA", "StackNA", NBINS, 0, 200);
 	TotShapeNA[1] = new TH1F("TotShapeNACh1", "Non Alligned time Shape of channel 1", NBINS, 0, 200); 
 	TotShapeNA[2] = new TH1F("TotShapeNACh2", "Non Alligned time Shape of channel 2", NBINS, 0, 200); 
 	TotShapeNA[3] = new TH1F("TotShapeNACh3", "Non Alligned time Shape of channel 3", NBINS, 0, 200); 
 	TotShapeNA[4] = new TH1F("TotShapeNACh4", "Non Alligned time Shape of channel 4", NBINS, 0, 200);
 	
+	//NullEventShape[0] = new TH1F("StackNull", "StackNull", NBINS, 0, 200);
+	NullEventShape[1] = new TH1F("NullEventShapeCh1", "Null Event Time Shape of channel 1", NBINS, 0, 200); 
+	NullEventShape[2] = new TH1F("NullEventShapeCh2", "Null Event Time Shape of channel 2", NBINS, 0, 200); 
+	NullEventShape[3] = new TH1F("NullEventShapeCh3", "Null Event Time Shape of channel 3", NBINS, 0, 200); 
+	NullEventShape[4] = new TH1F("NullEventShapeCh4", "Null Event Time Shape of channel 4", NBINS, 0, 200); 
+	
+	//NullEventShapeNA[0] = new TH1F("StackNullNA", "StackNullNA", NBINS, 0, 200);
+	NullEventShapeNA[1] = new TH1F("NullEventShapeNACh1", "Null Event Time Shape of channel 1", NBINS, 0, 200); 
+	NullEventShapeNA[2] = new TH1F("NullEventShapeNACh2", "Null Event Time Shape of channel 2", NBINS, 0, 200);	
+	NullEventShapeNA[3] = new TH1F("NullEventShapeNACh3", "Null Event Time Shape of channel 3", NBINS, 0, 200); 
+	NullEventShapeNA[4] = new TH1F("NullEventShapeNACh4", "Null Event Time Shape of channel 4", NBINS, 0, 200);	
+	
 	}
 
 WaveProcessor::~WaveProcessor(){
 // 
-	delete TotShape[0];
-	delete TotShape[1]; // should work if TimeShapeCh4 is defined i.e. is not a null pointer any more
-	delete TotShape[2];
-	delete TotShape[3];
-	delete TotShape[4];
-	delete TotShapeNA[0];
-	delete TotShapeNA[1]; 
-	delete TotShapeNA[2];
-	delete TotShapeNA[3];
-	delete TotShapeNA[4];
-	
+	for (int i=1;i<=4;i++){
+		delete TotShape[i];
+		delete TotShapeNA[i];
+		delete NullEventShape[i];
+		delete NullEventShapeNA[i];
+	}
+
 }
 
 void WaveProcessor::InitializeAnalysisTree(){
@@ -167,7 +175,7 @@ void WaveProcessor::ProcessFile(char* filename){
 	USHORT trigCell;
 	string string1;
 	float t3,t4;
-	TH1F *tr = new TH1F("TRef","Time reference distribution", 1000, 0, 100);
+
  
  /*     
     WaveformParam WFParamCh1; // for one counter of the scintillator counter
@@ -316,23 +324,25 @@ if(DAfile.is_open())
 			if (ChCounter>=CHS3) WFParamS3 =  give_waveform_parameters(CHS3); 
 			if (ChCounter>=CHS4) WFParamS4 =  give_waveform_parameters(CHS4);
 			
-			t3 = ArrivalTime (GetTempHist(CHS3), getTriggerHeght(), WFParamS3.baseLine, 3., 0.4);
-			t4 = ArrivalTime (GetTempHist(CHS4), getTriggerHeght(), WFParamS4.baseLine, 3., 0.4);
+			t3 = ArrivalTime (GetTempHist(CHS3), getTriggerHeight(), WFParamS3.baseLine, 3., 0.4);
+			t4 = ArrivalTime (GetTempHist(CHS4), getTriggerHeight(), WFParamS4.baseLine, 3., 0.4);
 			
 			TimeRef=(t4+t3)/2;
 			
 
 			
-			WFParamPM1.arrivalTimeCorrected = WFParamPM1.arrivalTime - TimeRef + 30.; 
-			WFParamPM2.arrivalTimeCorrected = WFParamPM2.arrivalTime - TimeRef + 30.; 			
+			WFParamPM1.arrivalTimeCorrected = WFParamPM1.arrivalTime2 - TimeRef + 30.; 
+			if (WFParamPM1.arrivalTime2==-1.) WFParamPM1.arrivalTimeCorrected=-1.;
+			WFParamPM2.arrivalTimeCorrected = WFParamPM2.arrivalTime2 - TimeRef + 30.;
+			if (WFParamPM2.arrivalTime2==-1.) WFParamPM2.arrivalTimeCorrected=-1.; 			
 			// 30 ns added just to put peaks on the Total histograms, where they are usually
 			
 			if (DEBUG) cout<<"Filling the tree..."<<flush<<endl;
 			paramTree -> Fill();
 			if (DEBUG) cout<<"The tree filled."<<flush<<endl;
-			FillTotHistograms(WFParamPM1.arrivalTime, WFParamPM2.arrivalTime, WFParamS3.arrivalTime, WFParamS4.arrivalTime);
+			FillTotHistograms(WFParamPM1.arrivalTimeCorrected, WFParamPM2.arrivalTimeCorrected, WFParamS3.arrivalTime2, WFParamS4.arrivalTime2);
 			if (DEBUG) cout<<"Filling FillTotHistogramsNonAlligned..."<<flush<<endl;
-			FillTotHistogramsNonAlligned();
+			FillTotHistogramsNonAlligned(WFParamPM1.arrivalTime2, WFParamPM2.arrivalTime2, WFParamS3.arrivalTime2, WFParamS4.arrivalTime2);
 			if (DEBUG) cout<<"Total histograms filled."<<flush<<endl;
 			
 		
@@ -345,7 +355,7 @@ if(DAfile.is_open())
 				cout<<"baseLine="<<WFParamPM1.baseLine<<", baseLineRMS="<<WFParamPM1.baseLineRMS<<", maxVal="<<WFParamPM1.maxVal
 				<<", FW10pcntM="<<WFParamPM1.FW10pcntM<<endl;
 			}
-			
+			if (DEBUG) cout<<"check if EHDR"<<endl;
 			
 			DAfile.read(word, 4); // if not eof, then it must be a new event
 			string1="";
@@ -355,24 +365,32 @@ if(DAfile.is_open())
 				cout<<"Error, EHDR expected instead of"<< string1 <<endl;
 				exit(EXIT_FAILURE);
 			}
-			
+			if (DEBUG) cout<<"Deleting Temp histograms"<<endl;
 			 DeleteTempHistograms();
 
 	}// while !eof, go to read new event
 				
 } // end of DAfile.is_open
 
-TotShape[1]->Write();
-TotShape[2]->Write();
-TotShape[3]->Write();
-TotShape[4]->Write();
-TotShapeNA[1]->Write();
-TotShapeNA[2]->Write();
-TotShapeNA[3]->Write();
-TotShapeNA[4]->Write();
-tr->Write();
+if (DEBUG) cout<<"Scaling TotShapeHistograms"<<endl;
+for (i=1;i<=4;i++){
+	cout<<"eventID="<<eventID<<", NullEventCNT["<<i<<"]="<<NullEventCNT[i]<<endl;
+	TotShape[i]->Scale(1/(float)(eventID-NullEventCNT[i]));
+	TotShapeNA[i]->Scale(1/(float)(eventID-NullEventCNT[i]));
+	if (NullEventCNT[i]!=0) NullEventShape[i]->Scale(1/(float)NullEventCNT[i]);
+	if (NullEventCNT[i]!=0) NullEventShapeNA[i]->Scale(1/(float)NullEventCNT[i]);
+}
 
-cout<<"Null Event % = "<<((float)NullEventCNT/2.)/(float)eventID*100<<endl; // Null event is sum both for PM1 and PM2
+for (i=1;i<=4;i++){
+	cout<<"Write into histograms"<<endl;
+	TotShape[i]->Write();
+	TotShapeNA[i]->Write();
+	NullEventShape[i]->Write();
+	NullEventShapeNA[i]->Write();
+}
+
+
+cout<<"Null Event % = "<<((float)NullEventCNT[1]/2+NullEventCNT[2]/2)/(float)eventID*100<<endl; // Null event for PM1 and PM2
 
 paramTree -> Write();
 
@@ -448,16 +466,16 @@ void WaveProcessor::CreateTempHistograms(){
 	// Filling is done by the SetbinContent, because it's faster and now it's OK since the widths are also rotated...
 	// May, 3 2017
 			switch (j) {
-				case 1: TempShapeCh1->SetBinContent(i, BinVoltage[j][i]); break;
-				case 2: TempShapeCh2->SetBinContent(i, BinVoltage[j][i]); break;
-				case 3: TempShapeCh3->SetBinContent(i, BinVoltage[j][i]); break;
-				case 4: TempShapeCh4->SetBinContent(i, BinVoltage[j][i]); break;
+				case 1: TempShapeCh1->SetBinContent(i+1, BinVoltage[j][i]); break;// +1, because histogram starts with 1
+				case 2: TempShapeCh2->SetBinContent(i+1, BinVoltage[j][i]); break; 
+				case 3: TempShapeCh3->SetBinContent(i+1, BinVoltage[j][i]); break;
+				case 4: TempShapeCh4->SetBinContent(i+1, BinVoltage[j][i]); break;
 			}
 			
 			if (DEBUG3) pomi = TempShapeCh1->FindBin(TimeBinVoltage[j][i]);
-			if (DEBUG3) cout<<"Filling the bin No: "<< pomi <<endl;
-			if (DEBUG3) cout<<"Left bin edge:"<<TempShapeCh1->GetXaxis()->GetBinLowEdge(pomi)<<", Right Edge: "<<(TempShapeCh1->GetXaxis()->GetBinLowEdge(pomi)+TempShapeCh1->GetXaxis()->GetBinWidth(pomi))<<endl;
-			if (DEBUG3) cout<<"TempShapeCh1(TimeBinVoltage)="<<TempShapeCh1->GetBinContent(TempShapeCh1->FindBin(TimeBinVoltage[j][i]))<<flush<<endl<<endl;
+			if (DEBUG3 &&(j==1)) cout<<"Filling the bin No: "<< pomi <<endl;
+			if (DEBUG3 &&(j==1)) cout<<"Left bin edge:"<<TempShapeCh1->GetXaxis()->GetBinLowEdge(pomi)<<", Right Edge: "<<(TempShapeCh1->GetXaxis()->GetBinLowEdge(pomi)+TempShapeCh1->GetXaxis()->GetBinWidth(pomi))<<endl;
+			if (DEBUG3 &&(j==1)) cout<<"TempShapeCh1(TimeBinVoltage)="<<TempShapeCh1->GetBinContent(TempShapeCh1->FindBin(TimeBinVoltage[j][i]))<<flush<<endl<<endl;
 		
 		}// end loop i	
 	}// end loop j
@@ -473,8 +491,8 @@ void WaveProcessor::CreateTempHistograms(){
 void WaveProcessor::DeleteTempHistograms(){
 	TempShapeCh1->Delete();
 	if (TempShapeCh2) TempShapeCh2->Delete(); 
-	if (No_of_Ch>2) delete TempShapeCh3;
-	if (No_of_Ch>3) delete TempShapeCh4; // should work if TimeShapeCh4 is defined i.e. is not a null pointer any more
+	if (No_of_Ch>2) TempShapeCh3->Delete();
+	if (No_of_Ch>3) TempShapeCh4->Delete(); // should work if TimeShapeCh4 is defined i.e. is not a null pointer any more
 
 }
 	
@@ -647,13 +665,7 @@ WaveformParam output; //how many parameters to be returned
 	if (DEBUG) cout<<"ArrivalTimeBin="<<ArrivalTimeBin<<endl;
 	
 	
-	if (ArrivalTimeBin==-1) { 
-		//cout<<"In give_waveform_parameters, couldn't find the signal. Empty histogram or the threshold is too high! returning 0..."<<flush<<endl; 
-			//cout<<"Null Event ID: "<<eventID<<endl;
-			NullEventCNT++;
-			output.arrivalTime = 0.; // indicates that something is wrong
-		//return output; 
-		} //exit(1);}
+
 	output.arrivalTimeRaw = AnalysisHist->GetXaxis()->GetBinCenter(ArrivalTimeBin);
 	
 	// this line is for constant fraction discrimination :
@@ -694,7 +706,7 @@ WaveformParam output; //how many parameters to be returned
 	output.maxVal  = AnalysisHist->GetMaximum() - output.baseLine;	
 
 	TH1F *tmpHist = (TH1F*) AnalysisHist->Clone(); // baseLine should be subtracted in order to get time of 90% energy deposition of real signal (baseLine excluded)
-	for (i=0; i<1024; i++){
+	for (i=1; i<=1024; i++){
 		tmpHist->SetBinContent(i, (tmpHist->GetBinContent(i)-output.baseLine)); 
 	}
 	TH1* hcumul = tmpHist->GetCumulative();
@@ -709,6 +721,15 @@ WaveformParam output; //how many parameters to be returned
 		if (DEBUG) cout<<"tmpHist->Delete()"<<flush<<endl;
 
 	tmpHist->Delete();
+	
+	if (ArrivalTimeBin==-1) { 
+	//cout<<"In give_waveform_parameters, couldn't find the signal. Empty histogram or the threshold is too high! returning 0..."<<flush<<endl; 
+		//cout<<"Null Event ID: "<<eventID<<endl;
+		NullEventCNT[Ch]++;
+		output.arrivalTime = -1.; // indicates that something is wrong
+		output.arrivalTime2 = -1.; // indicates that something is wrong
+	//return output; 
+	} //exit(1);}
 
 	return output;
 }
@@ -745,7 +766,7 @@ Observables* WaveProcessor::ProcessOnline( Float_t* RawTimeArr,
 
 	// baseline subtraction
 	TH1F *tmpHist = (TH1F*) output->hist->Clone(); // baseLine should be subtracted in order to get time of 90% energy deposition of real signal (baseLine excluded)
-	for (i=0; i<RawArrLength; i++) tmpHist->SetBinContent(i, (tmpHist->GetBinContent(i)-output->Value(baseLine)));
+	for (i=1; i<=RawArrLength; i++) tmpHist->SetBinContent(i, (tmpHist->GetBinContent(i)-output->Value(baseLine)));
 
 	TH1* hcumul = tmpHist->GetCumulative();
 	hcumul->Scale(1/tmpHist->Integral()); // normalize cumulative histogram to 1
@@ -1052,11 +1073,17 @@ void WaveProcessor::RemoveSpikes(float threshold, short spikeWidth)
 void WaveProcessor::FillTotHistograms(Float_t ArTm1, Float_t ArTm2, Float_t ArTm3, Float_t ArTm4){
 Float_t BinContent;
 int i, j, ArBin, Nbins(NBINS);
+int chpm1(CHPM1), chpm2(CHPM2);
+Float_t ArTmtmp[5];
+ArTmtmp[1]=ArTm1;
+ArTmtmp[2]=ArTm2;
+ArTmtmp[3]=ArTm3;
+ArTmtmp[4]=ArTm4;
 
 //ArBinAV = (int)(float(TempShapeCh3->FindBin(ArTm3)+TempShapeCh4->FindBin(ArTm4))/.2 +0.5);
 
 	for (j=1; j<=No_of_Ch; j++){
-		for (i=0; i<Nbins; i++){
+		for (i=1; i<=Nbins; i++){
 			switch (j) {
 				case 1: ArBin = TempShapeCh1->FindBin(ArTm1); BinContent=TempShapeCh1->GetBinContent((ArBin+i)%(Nbins)); break;
 				case 2: ArBin = TempShapeCh2->FindBin(ArTm2); BinContent=TempShapeCh2->GetBinContent((ArBin+i)%(Nbins)); break;
@@ -1065,19 +1092,31 @@ int i, j, ArBin, Nbins(NBINS);
 			}
 			
 			if (DEBUG2) cout<<"j:"<<j<<", i:"<<i<<", ArBin="<<ArBin<<", BinContent="<<BinContent<<endl;
-		TotShape[j]->SetBinContent((i-185)%Nbins, TotShape[j]->GetBinContent((i-185)%Nbins)+BinContent); 
+			//if ((ArTmtmp[1]<=0)&&(j==1)) cout<<"j:"<<j<<", i:"<<i<<", ArBin="<<ArBin<<", ArTmtmp[1]="<<ArTmtmp[1]<<", BinContent="<<BinContent<<endl;
+		if(j==chpm1)	if(ArTmtmp[chpm1]!=-1.) TotShape[j]->SetBinContent((i+152-1)%Nbins+1, TotShape[j]->GetBinContent((i+152-1)%Nbins+1)+BinContent); 
+						else 	NullEventShape[j]->SetBinContent((i+152-1)%Nbins+1, NullEventShape[j]->GetBinContent((i+152-1)%Nbins+1)+BinContent);
+		if(j==chpm2)	if(ArTmtmp[chpm2]!=-1.) TotShape[j]->SetBinContent((i+160-1)%Nbins+1, TotShape[j]->GetBinContent((i+160-1)%Nbins+1)+BinContent); 
+						else    NullEventShape[j]->SetBinContent((i+160-1)%Nbins+1, NullEventShape[j]->GetBinContent((i+160-1)%Nbins+1)+BinContent);
+		
+		if((j!=chpm1)&&	(j!=chpm2))    TotShape[j]->SetBinContent((i+170)%Nbins, TotShape[j]->GetBinContent((i+170)%Nbins)+BinContent); 
 		}
 	}
 	//cout<<"exit FillTotHistograms"<<flush<<endl;
 
 }
 
-void WaveProcessor::FillTotHistogramsNonAlligned(){
+void WaveProcessor::FillTotHistogramsNonAlligned(Float_t ArTm1, Float_t ArTm2, Float_t ArTm3, Float_t ArTm4){
 Float_t BinContent;
 int i, j, ArBin, Nbins(NBINS);
+int chpm1(CHPM1), chpm2(CHPM2);
+Float_t ArTmtmp[5];
+ArTmtmp[1]=ArTm1;
+ArTmtmp[2]=ArTm2;
+ArTmtmp[3]=ArTm3;
+ArTmtmp[4]=ArTm4;
 
 	for (j=1; j<=No_of_Ch; j++){
-		for (i=0; i<Nbins; i++){
+		for (i=1; i<=Nbins; i++){
 			switch (j) {
 				case 1: BinContent=TempShapeCh1->GetBinContent(i); break;
 				case 2: BinContent=TempShapeCh2->GetBinContent(i); break;
@@ -1085,8 +1124,18 @@ int i, j, ArBin, Nbins(NBINS);
 				case 4: BinContent=TempShapeCh4->GetBinContent(i); break;
 			}
 			
-			if (DEBUG2) cout<<"j:"<<j<<", i:"<<i<<", ArBin="<<ArBin<<", BinContent="<<BinContent<<endl;
-		TotShapeNA[j]->SetBinContent(i, TotShapeNA[j]->GetBinContent(i)+BinContent); 
+
+		if(j==chpm1)	if(ArTmtmp[chpm1]!=-1.) {
+			TotShapeNA[j]->SetBinContent(i, (TotShapeNA[j]->GetBinContent(i)+BinContent)); 
+						if (DEBUG2) cout<<"j:"<<j<<", i:"<<i<<", ArTmtmp[1]="<<ArTmtmp[1]<<", BinContent="<<BinContent<<endl;
+						if (DEBUG2) cout<<"TotShapeNA GBC:"<<TotShapeNA[j]->GetBinContent(i)<<endl;
+		}
+					else 	NullEventShapeNA[j]->SetBinContent(i, NullEventShapeNA[j]->GetBinContent(i)+BinContent);
+		if(j==chpm2)    if(ArTmtmp[chpm2]!=-1.) TotShapeNA[j]->SetBinContent(i, TotShapeNA[j]->GetBinContent(i)+BinContent); 
+					else    NullEventShapeNA[j]->SetBinContent(i, NullEventShapeNA[j]->GetBinContent(i)+BinContent);
+		
+		if((j!=chpm1)&&(j!=chpm2)) TotShapeNA[j]->SetBinContent(i, TotShapeNA[j]->GetBinContent(i)+BinContent); 
+
 		}
 	}
 
