@@ -14,7 +14,7 @@ CC = g++
 .cxx.o:
 	$(CC) $(CXXFLAGS) -c $*.cxx
 
-CXXFLAGS      =  -O -g -Wall -fPIC
+CXXFLAGS      =  -O -g -ggdb -Wall -fPIC # -g -ggdb debug options
 ROOTCFLAGS    = $(shell root-config --cflags)
 ROOTLIBS      = $(shell root-config --libs)
 ROOTGLIBS     = $(shell root-config --glibs)
@@ -31,13 +31,22 @@ all: $(ALL)
 
 
 DEPS = include/DA.h include/WaveProcessor.h
-OBJ = DA.o WaveProcessor.o typeConvert.o
+OBJ = DA.o WaveProcessor.o typeConvert.o GetBaseLineHistogramRaw.o GetUnitHistogramRaw.o gaussjordan.o
 
 
 WaveProcessor.o:	src/WaveProcessor.cxx include/WaveProcessor.h 
 	$(CC) -c -o $@ $< $(CXXFLAGS)
 
 typeConvert.o:	src/typeConvert.cxx 
+	$(CC) -c -o $@ $< $(CXXFLAGS)
+
+gaussjordan.o: src/gaussjordan.cxx include/gaussjordan.h
+	$(CC) -c -o $@ $< $(CXXFLAGS)
+
+GetBaseLineHistogramRaw.o: src/GetBaseLineHistogramRaw.cxx
+	$(CC) -c -o $@ $< $(CXXFLAGS)
+
+GetUnitHistogramRaw.o: src/GetUnitHistogramRaw.cxx
 	$(CC) -c -o $@ $< $(CXXFLAGS)
 
 DA.o:	src/DA.cxx include/DA.h 
@@ -48,7 +57,7 @@ DA: $(OBJ)
 	$(CC) -o $@ $^ $(RLIBS)
 
 clean:
-	rm -f *.o *~ corre
+	rm -f *.o *~ 
 	rm -f $(ALL)
 
 

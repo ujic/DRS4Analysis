@@ -12,13 +12,17 @@ using namespace DRS4_data;
 
 WaveProcessor::WaveProcessor() :
     triggerHeight(0), delay(0), eventID(0), baseLineAVG(BASELINE), baseLineCNT(0),
-    aligned(false), No_of_Ch(0),
+    aligned(false), No_of_Ch(0), 
     TempShapeCh1(NULL),
     TempShapeCh2(NULL),
     TempShapeCh3(NULL),
     TempShapeCh4(NULL),
-    RawTempShape(NULL)
+    RawTempShape(NULL),
+    fract(((float)FRACTION)/100.),
+    avging(AVERAGING)
 {
+	GoodArrivalCNT[CHPM1]=0; GoodArrivalCNT[CHPM2]=0; NullEventCNT[1]=0;
+    NullEventCNT[2]=0; NullEventCNT[3]=0; NullEventCNT[4]=0;
 	//TotShape[0] = new TH1F("Stack", "Stack", NBINS, 0, 200);
 	TotShape[1] = new TH1F("TotShapeCh1", "Time Shape of channel 1", NBINS, 0, 200); 
 	TotShape[2] = new TH1F("TotShapeCh2", "Time Shape of channel 2", NBINS, 0, 200); 
@@ -164,7 +168,7 @@ void WaveProcessor::allignCells0(USHORT trigger_cell){ // align cell #0 of all c
 
 void WaveProcessor::ProcessFile(char* filename){
 	
-	int Ch_PM1(CHPM1), Ch_PM2(CHPM2);
+	int Ch_PM1(CHPM1), Ch_PM2(CHPM2), Ch_S3(CHS3), Ch_S4(CHS4);
 	ifstream DAfile (filename, ios::in|ios::binary);
 	char word[4], small_word[2];
 	char filenameROOT[256];
@@ -175,6 +179,8 @@ void WaveProcessor::ProcessFile(char* filename){
 	USHORT trigCell;
 	string string1;
 	float t3,t4;
+	UnitPosAmpl* Units_in_Peak; // unit responses in signal with their amplitudes and time positions 
+	int NUnits; // this will contain how many peaks were returned by UnitResponseFinder
 
  
  /*     
@@ -209,6 +215,8 @@ void WaveProcessor::ProcessFile(char* filename){
 	f = new TFile(filenameROOT, "recreate");
 	
 	InitializeAnalysisTree();
+	InitializeUnitParameters(); // form a UnitShape histogram containint the shape of the Unit response 
+								// GetUnitHistogramRaw subtracted by GetBaseLineHistogramRaw
 	
 if(DAfile.is_open())
 	{    
@@ -324,18 +332,22 @@ if(DAfile.is_open())
 			if (ChCounter>=CHS3) WFParamS3 =  give_waveform_parameters(CHS3); 
 			if (ChCounter>=CHS4) WFParamS4 =  give_waveform_parameters(CHS4);
 			
-			t3 = ArrivalTime (GetTempHist(CHS3), getTriggerHeight(), WFParamS3.baseLine, 3., 0.4);
+			t3 = ArrivalTime (GetTempHist(CHS3), getTriggerHeight(), WFParamS3.baseLine, 3., 0.4); // not necessary to have a same fraction (FRACTION) as PM1 and PM2
 			t4 = ArrivalTime (GetTempHist(CHS4), getTriggerHeight(), WFParamS4.baseLine, 3., 0.4);
 			
 			TimeRef=(t4+t3)/2;
 			
-
+			UnitResponseFinder(GetTempHist(1), TimeRef, &NUnits, Units_in_Peak);// Units_in_Peak holds pas and ampl, NUnits - how many are find
+			
+			/// see how to compile Units_in_Peak
 			
 			WFParamPM1.arrivalTimeCorrected = WFParamPM1.arrivalTime2 - TimeRef + 30.; 
 			if (WFParamPM1.arrivalTime2==-1.) WFParamPM1.arrivalTimeCorrected=-1.;
 			WFParamPM2.arrivalTimeCorrected = WFParamPM2.arrivalTime2 - TimeRef + 30.;
 			if (WFParamPM2.arrivalTime2==-1.) WFParamPM2.arrivalTimeCorrected=-1.; 			
 			// 30 ns added just to put peaks on the Total histograms, where they are usually
+			
+			
 			
 			if (DEBUG) cout<<"Filling the tree..."<<flush<<endl;
 			paramTree -> Fill();
@@ -347,7 +359,7 @@ if(DAfile.is_open())
 			
 		
 
-			if ((WFParamPM1.FW10pcntM>30.)&&(WFParamPM1.maxVal>15.)&&(cnttmp<20))
+			if ((WFParamPM1.FW10pcntM>30.)&&(WFParamPM1.maxVal>15.)&&(cnttmp<5))
 			{ 
 				cnttmp++;
 				PrintCurrentHist(1);
@@ -373,10 +385,15 @@ if(DAfile.is_open())
 } // end of DAfile.is_open
 
 if (DEBUG) cout<<"Scaling TotShapeHistograms"<<endl;
+
+	TotShapeNA[Ch_PM1]->Scale(1/(float)(GoodArrivalCNT[Ch_PM1]));
+	TotShapeNA[Ch_PM2]->Scale(1/(float)(GoodArrivalCNT[Ch_PM2]));
+	TotShapeNA[Ch_S3]->Scale(1/(float)(eventID));
+	TotShapeNA[Ch_S4]->Scale(1/(float)(eventID));	
+	
+
 for (i=1;i<=4;i++){
-	cout<<"eventID="<<eventID<<", NullEventCNT["<<i<<"]="<<NullEventCNT[i]<<endl;
-	TotShape[i]->Scale(1/(float)(eventID-NullEventCNT[i]));
-	TotShapeNA[i]->Scale(1/(float)(eventID-NullEventCNT[i]));
+	cout<<"eventID="<<eventID<<", NullEventCNT["<<i<<"]="<<NullEventCNT[i]<<", GoodArrival["<<i<<"]="<<GoodArrivalCNT[i]<<endl;
 	if (NullEventCNT[i]!=0) NullEventShape[i]->Scale(1/(float)NullEventCNT[i]);
 	if (NullEventCNT[i]!=0) NullEventShapeNA[i]->Scale(1/(float)NullEventCNT[i]);
 }
@@ -644,6 +661,7 @@ WaveformParam output; //how many parameters to be returned
 	TH1F* AnalysisHist;
 	//char histfilename[60];
 	int i;
+	Float_t baseLineEnd(BASELINEEND);
 	
 	switch (Ch) {
 		case 1: AnalysisHist = TempShapeCh1; break;
@@ -656,8 +674,8 @@ WaveformParam output; //how many parameters to be returned
 	
 	// DRS4 writes everything what happened 40 ns before the trigger, when delay=0, otherwise the delay is substracted from 40 ns
 	// I took 35 ns, just to have a safe distance.
-	output.baseLine = AnalysisHist->Integral(0, AnalysisHist->FindBin(35.-delay), "width") / (35.-delay) ; 
-	output.baseLineRMS = CalcHistRMS(AnalysisHist, 1, AnalysisHist->FindBin(35.-delay));
+	output.baseLine = AnalysisHist->Integral(0, AnalysisHist->FindBin(baseLineEnd-delay), "width") / (baseLineEnd-delay) ; 
+	output.baseLineRMS = CalcHistRMS(AnalysisHist, 1, AnalysisHist->FindBin(baseLineEnd-delay));
 
 
 	int ArrivalTimeBin = AnalysisHist->FindFirstBinAbove(triggerHeight+output.baseLine); // bin should be transformed to ns according to axis
@@ -669,9 +687,9 @@ WaveformParam output; //how many parameters to be returned
 	output.arrivalTimeRaw = AnalysisHist->GetXaxis()->GetBinCenter(ArrivalTimeBin);
 	
 	// this line is for constant fraction discrimination :
-	output.arrivalTime = ArrivalTime(AnalysisHist, triggerHeight, output.baseLine, 3., 0.4); // risetime 3. ns, by eye, fraction 0.2
+	output.arrivalTime = ArrivalTime(AnalysisHist, triggerHeight, output.baseLine, 3., fract); // risetime 3. ns, by eye, fraction 0.2
 
-	output.arrivalTime2 = ArrivalTime2(AnalysisHist, output.baseLine, 0.4); // last nuber is a fraction at 
+	output.arrivalTime2 = ArrivalTime2(AnalysisHist, output.baseLine, fract); // last nuber is a fraction at 
 
 	output.FWHM = GetFWHM(Ch, output.baseLine);
 	output.FW10pcntM = GetFWHM(Ch, output.baseLine, 10);
@@ -839,7 +857,7 @@ float WaveProcessor::MeanAndRMS(const TH1F *hist, int first, int last, float &me
 }
 
 
-float WaveProcessor::ArrivalTime(TH1F* hist, float threshold, float baseline,
+float WaveProcessor::ArrivalTime(const TH1F* hist, float threshold, float baseline,
                                   float risetime, float fraction) // risetime=3ns, saw by eye as interrupt of arrival time of low amplitude signals
 {
 
@@ -1116,6 +1134,8 @@ ArTmtmp[3]=ArTm3;
 ArTmtmp[4]=ArTm4;
 
 	for (j=1; j<=No_of_Ch; j++){
+		if ((j==chpm1)&&(ArTmtmp[chpm1]>30.)&&(ArTmtmp[chpm1]<50.)) GoodArrivalCNT[chpm1]++;
+		if ((j==chpm2)&&(ArTmtmp[chpm2]>30.)&&(ArTmtmp[chpm2]<50.)) GoodArrivalCNT[chpm2]++;
 		for (i=1; i<=Nbins; i++){
 			switch (j) {
 				case 1: BinContent=TempShapeCh1->GetBinContent(i); break;
@@ -1125,14 +1145,14 @@ ArTmtmp[4]=ArTm4;
 			}
 			
 
-		if(j==chpm1)	if(ArTmtmp[chpm1]!=-1.) {
-			TotShapeNA[j]->SetBinContent(i, (TotShapeNA[j]->GetBinContent(i)+BinContent)); 
-						if (DEBUG2) cout<<"j:"<<j<<", i:"<<i<<", ArTmtmp[1]="<<ArTmtmp[1]<<", BinContent="<<BinContent<<endl;
-						if (DEBUG2) cout<<"TotShapeNA GBC:"<<TotShapeNA[j]->GetBinContent(i)<<endl;
-		}
-					else 	NullEventShapeNA[j]->SetBinContent(i, NullEventShapeNA[j]->GetBinContent(i)+BinContent);
-		if(j==chpm2)    if(ArTmtmp[chpm2]!=-1.) TotShapeNA[j]->SetBinContent(i, TotShapeNA[j]->GetBinContent(i)+BinContent); 
-					else    NullEventShapeNA[j]->SetBinContent(i, NullEventShapeNA[j]->GetBinContent(i)+BinContent);
+		if(j==chpm1)	if(ArTmtmp[chpm1]!=-1.){
+							if ((ArTmtmp[chpm1]>30.)&&(ArTmtmp[chpm1]<50.))	TotShapeNA[j]->SetBinContent(i, TotShapeNA[j]->GetBinContent(i)+BinContent); 
+						}
+						else 	NullEventShapeNA[j]->SetBinContent(i, NullEventShapeNA[j]->GetBinContent(i)+BinContent);
+		if(j==chpm2)    if(ArTmtmp[chpm2]!=-1.){
+							if ((ArTmtmp[chpm2]>30.)&&(ArTmtmp[chpm2]<50.)) TotShapeNA[j]->SetBinContent(i, TotShapeNA[j]->GetBinContent(i)+BinContent); 
+						}
+						else    NullEventShapeNA[j]->SetBinContent(i, NullEventShapeNA[j]->GetBinContent(i)+BinContent);
 		
 		if((j!=chpm1)&&(j!=chpm2)) TotShapeNA[j]->SetBinContent(i, TotShapeNA[j]->GetBinContent(i)+BinContent); 
 
@@ -1141,7 +1161,7 @@ ArTmtmp[4]=ArTm4;
 
 }
 
-float WaveProcessor::ArrivalTime2(TH1F* hist, float baseLine, float fraction){
+float WaveProcessor::ArrivalTime2(const TH1F* hist, float baseLine, const float fraction){
 	float tArrival;
 	int i;
 	Int_t maxBin = hist->GetMaximumBin();
@@ -1170,7 +1190,134 @@ float WaveProcessor::ArrivalTime2(TH1F* hist, float baseLine, float fraction){
 			
 	}
 	if (tArrival>200.) tArrival=200. ;// sometimes extrapolation gives stupid things when triggers on Null event
-return tArrival;
+	return tArrival;
+}
+/*
+void WaveProcessor::GetPeakParameters(const TH1F* hist, PeakDerivativesAroundFractionPoint* output){
+	GetPeakParameters(const TH1F* hist, PeakDerivativesAroundFractionPoint* output, float fract);
+	}
+*/
+int WaveProcessor::GetPeakParameters(const TH1F* hist, PeakDerivativesAroundFractionPoint* output, float fraction){
+
+	float baseLineEnd(BASELINEEND), arTm;
+	Float_t sumBin(0);
+	Int_t Nbins(NBINS);
+	TH1F* smoothHist = (TH1F*) hist->Clone();
+	TH1F* subtractHist = (TH1F*) hist->Clone();
+	float stepDeriv1[5], stepDeriv2[4], stepDeriv3[3];
+	int i, j;
+	for(j=(int)((float)avging/2.)+1; j<=Nbins-(int)((float)avging/2.); j++){
+		sumBin=0;
+		for(i=((int)(-(float)avging/2)+1-i%2);i<=(int)((float)avging/2);i++){//averaging around the bin, odd and pair avging resolved 5 -> (-2,2), 4->(-1,2)
+				sumBin+=hist->GetBinContent(j+i);
+			}
+			smoothHist->SetBinContent(j, sumBin/(float)avging);
+		}
+		
+	/*	
+	for (j=1; j<Nbins-avging, j++){
+		sumBin=0;
+		for (i=0; i<avging; i++){
+			sumBin+=hist->GetBinContent(j+i);
+		}
+		smoothHist->Setbincontent(j, sumBin/(float)avging);
+		* 
+		* 
+	}*/
+	
+	float baseLine = smoothHist->Integral(0, smoothHist->FindBin(baseLineEnd-delay), "width") / (baseLineEnd-delay) ; 
+	arTm = ArrivalTime2(hist, baseLine, fract); // last nuber is a fraction at
+	
+	if (!arTm)
+	
+	output->crossBin = hist->GetBinCenter(arTm);
+	
+	// calculate values and step derivatives - will be used to determine what amplitude of unit response to subtract
+	//values
+	for (i=0; i<(avging+1); i++)	output->smoothVal[i]=smoothHist->GetBinContent(output->crossBin-2*avging+i*avging);
+	// first derivatives
+	for (i=0; i<avging; i++) output->stepDeriv1[i] = output->smoothVal[i+1] - output->smoothVal[i];
+	// second derivatives
+	for (i=0; i<avging-1; i++) output->stepDeriv2[i] = output->stepDeriv1[i+1] - output->stepDeriv1[i];
+	// third derivatives - if we found that third arival have a influence
+	// if true everything should be translated in sense that stepDeriv[0] should corespond to stepDeriv[-1]
+	// because the third unit peak should be traced back by two steps
+	for (i=0; i<avging-1; i++) output->stepDeriv3[i] = output->stepDeriv2[i+1] - output->stepDeriv2[i];
+	//maxVal, maybe not needed?
+	output->maxVal=smoothHist->GetMaximum();
+	
+	return hist->FindFirstBinAbove(triggerHeight+baseLine); // return -1 if the peak is bellow threshold
 }
 
+void WaveProcessor::InitializeUnitParameters(){
+	TH1F* BaseLineShape;
+	UnitShape = GetUnitHistogramRaw();
+	BaseLineShape = GetBaseLineHistogramRaw();
+	
+	for(int i=1; i<=1024; i++) UnitShape->SetBinContent(i,UnitShape->GetBinContent(i)-BaseLineShape->GetBinContent(i));
+	GetPeakParameters(UnitShape, UnitParameters, fract); //smothen
+	
+	
+}
+
+
+
+void WaveProcessor::UnitResponseFinder(TH1F* hist, float TRef, int* NofUnits, UnitPosAmpl* output){ //must return positions and amplitudes of the unit responses
+	output = new UnitPosAmpl[40]; // don't expect >40, would mean 1 for each ns for 40ns
+	PeakDerivativesAroundFractionPoint *PeakParam;
+	
+	float stepDeriv1[5], stepDeriv2[4], stepDeriv3[3];
+	int cnt(0);
+	// declarations of matrices for gaussj; 3 for matrix with value, 1st derivative and 2nd derivative
+    double **a  = matrix(1, 3, 1, 3); // coefficient matrix, A.x = b
+    double **b  = matrix(1, 3, 1, 1); // b has more column when you have more solutions A.x=b[1], A.x=b[2] ...
+    // convention - a[i][j] -> i-row, j-column
+
+	TH1F* HistSubtract= (TH1F*) hist->Clone();
+	TH1F* UnitClone=  (TH1F*) UnitShape->Clone();
+	
+	while ((GetPeakParameters(HistSubtract, PeakParam, fract))!=-1) {// if -1, peak bellow threshold
+
+		if (cnt>=40) break;
+		// total rising edge of Unit is 38 bins (from 0 to peak), decay is 196 (from peak to 0.2 mV) - there is a long tail
+		// if fract=0.2, 0.2*38 = 7.6 -> no sense to calculate second derivative if avging>3 !!
+		// 0.3*38=11.4, avging<~4 need second derivative; for avging=5 fract=0.4 need third derivative, etc
+		
+		// KEEP IN MIND !
+			
+		// smoothVal[2] is a smooth value at crossBin = hist->FindFirstAbove(fraction*(hist->GetMaximum()));
+		b[1][1]=PeakParam->smoothVal[2];
+		b[1][2]=PeakParam->stepDeriv1[2];
+		b[1][3]=PeakParam->stepDeriv2[2]; 
+		// 
+		a[1][1]=UnitParameters->smoothVal[2];  a[2][1]=UnitParameters->smoothVal[1];  a[3][1]=UnitParameters->smoothVal[0];
+		a[2][1]=UnitParameters->stepDeriv1[2]; a[2][2]=UnitParameters->stepDeriv1[1]; a[2][3]=UnitParameters->stepDeriv1[0];
+		a[3][1]=UnitParameters->stepDeriv2[2]; a[3][2]=UnitParameters->stepDeriv2[1]; a[3][3]=UnitParameters->stepDeriv2[0];
+		
+		gaussj(a, 3, b, 1); // b is overwritten by the solution 
+		// Only the first UnitResponse will be subtracted in order to avoid probable error accumulation
+		
+		UnitClone->Scale(b[1][1]); 
+		/** fract and averaging should be considere for the number of derivatives **/
+
+		
+		// rise edge is 38 bins, decay edge of the Unit is 194 (after the peak maximum)
+		
+		for (int i=-(int)38*(fract+0.2); i<=((int)(38*(1.-fract-0.2))+194); i++)// there is a 20% more bin left from fract cross point for all reasonable fract values
+			hist->SetBinContent(i+PeakParam->crossBin, hist->GetBinContent(i+PeakParam->crossBin)-UnitClone->GetBinContent(i+UnitParameters->crossBin));
+		// crossBin is referent point for both peak arrivals
+		
+		// the first arrival is subtracted, repeat the process until the hist is leveled down.
+		
+		UnitClone->Scale(1/b[1][1]); // go back to original Unit which corresponds to original parameters
+		output[cnt].position=TRef - HistSubtract->GetBinCenter(PeakParam->crossBin); // u odnosu na sta ??   HistSubtract
+		output[cnt].amplitude=b[1][1];
+		cnt++;
+	
+	}
+
+	if (cnt>=40) {cout<<"too many Unit responses. Exiting..."<<endl; exit(EXIT_FAILURE);}
+	*NofUnits=cnt;
+	}
+	
 

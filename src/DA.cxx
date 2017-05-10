@@ -13,6 +13,8 @@
 
 // TO DO:
 
+/** eventID doesn't start allways from zero, software divided files starts from int(10000) !!!!!!!! **/
+
 /// to introduce spike rejection !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
 // to introduce deconvolution all that in the 27.4.2017. folder where I'll form a github conection

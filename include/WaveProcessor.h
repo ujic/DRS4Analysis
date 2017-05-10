@@ -16,8 +16,13 @@
 #define CHPM2 2 // second
 #define CHS3 3 // ch of first trigger
 #define CHS4 4 // ch of second trigger
-#define BASELINE 4 // ad-hoc baseline in mV
+#define BASELINE 3 // ad-hoc baseline in mV
+#define BASELINEEND 30. // the end point of the baseline (it is integrated from 0 ns to BASELINEEND ns
 #define NBINS 1024 // usually for DRS4 it's 1024 ...
+#define FRACTION 40 // in % used for the constant fraction correction
+					/** FRACTION is better to be small **/
+#define AVERAGING 5 // how many bins to average in creating smoothHist used to determine the derivatives(slopes)
+					// of the peak 
 
 
 
@@ -40,7 +45,7 @@
 
 
 #include "observables.h"
-
+#include "gaussjordan.h"
 
 
 
@@ -49,9 +54,14 @@ using namespace std;
 typedef unsigned short USHORT;
 typedef signed short SSHORT; 
 
-
-
-
+struct PeakDerivativesAroundFractionPoint{
+	float maxVal;
+	int crossBin; // Bin where is the value fract*maxVal
+	float smoothVal[AVERAGING+1];
+	float stepDeriv1[AVERAGING];
+	float stepDeriv2[AVERAGING-1];
+	float stepDeriv3[AVERAGING-2];
+};
 
 struct date {
     USHORT year;
@@ -89,10 +99,11 @@ SSHORT convertChtoSSHORT (char*) ; // converts ch aray of 2 to the unsigned shor
 // since the amplitudes of the response to muons are not allways the same
 // The hadronic shower is constituted of many superimposed Green functions and our goal is to find their positions   
 struct UnitPosAmpl{
-	Float_t startPosition; // start position of the Unit response 
+	Float_t position; // start position of the Unit response 
 	Float_t amplitude;// amplitude
-	Float_t amplitude_err;
+//	Float_t amplitude_err;
 };
+
 
 class WaveProcessor {
 
@@ -101,6 +112,8 @@ class WaveProcessor {
 // bin starts as usual - form 0
 
     public:
+    
+
 
     WaveProcessor();   //constructor
     ~WaveProcessor();  //destructor
@@ -117,16 +130,17 @@ class WaveProcessor {
     void SetNoOfChannels(int Ch) {No_of_Ch = Ch;}
     int GetNoOfChannels() const {return No_of_Ch;}
     
-    
+    // initialization functions
     void InitializeAnalysisTree();
     void set_time_calibration (int,int,float); // CH, bin, value
     float get_time_calibration (int,int) const;
     void set_bin_time_n_voltage (int, int, SSHORT, SSHORT, USHORT);
-
-
     void allignCells0(unsigned short); // align cell #0 of all channels
     void CreateTempHistograms(); // fill the histograms with the colected waveforms of one event, one histogram per channel
     void DeleteTempHistograms(); // they must be deleted at the end of each event
+    void InitializeUnitParameters();
+ 
+ // histogram manipulation   
     TH1F* GetTotHist(int Ch) const {return TotShape[Ch];}; // return the histogram of given chanel
     TH1F* GetTempHist(int) const;
     void PrintCurrentHist(int) const; // print pdf of temporary histogram (TempShape) of given channel
@@ -138,7 +152,11 @@ class WaveProcessor {
     WaveformParam give_waveform_parameters(int);  // gives time and amplitude of a given channel
     DRS4_data::Observables* ProcessOnline(Float_t* , Float_t* , Int_t);
     static DRS4_data::Observables* ProcessOnline(Float_t* time, Float_t* amplitude, Int_t length, float threshold, float trigDelay);
+	void UnitResponseFinder(TH1F*, float , int*, UnitPosAmpl* );
 
+	static TH1F* GetUnitHistogramRaw();
+	static TH1F* GetBaseLineHistogramRaw();
+	
     Float_t GetFWHM(int, Float_t);
     Float_t GetFWHM(int, Float_t, Float_t); // third float is in percent, 50% for FWHM, 10 % - width at 10
     
@@ -148,18 +166,26 @@ class WaveProcessor {
     UnitPosAmpl give_time_amplitude(int);
     
     private:										// PRIVATE:
+    
+    PeakDerivativesAroundFractionPoint* UnitParameters;
+    
+    const float fract;
+    const int avging;
        
     static float CalcHistRMS(const TH1F*, int, int );
     static float MeanAndRMS(const TH1F*, int first, int last, float &mean, float &rms);
-    static float ArrivalTime(TH1F*, float, float, float, float);
-    float ArrivalTime2(TH1F*, float, float);
+    static float ArrivalTime(const TH1F*, float, float, float, float);
+    float ArrivalTime2(const TH1F*, float, const float);
+    int GetPeakParameters(const TH1F*, PeakDerivativesAroundFractionPoint*, float); 
+    // return maxVal, 1st, 2nd and 3rd derivative around fraction crosspoint - all for smothened histogram !!!!
     
     void RemoveSpikes(float, short); // removes spikes of given threshold (float) in mV and given width (in bins) - usually 2
                                     
     
     TFile* f;
 	TTree* paramTree;
-    
+	TH1F* UnitShape;
+	    
     float triggerHeight;
     float delay;
     float range;
@@ -170,7 +196,8 @@ class WaveProcessor {
     int baseLineCNT;
     bool aligned; // flag that the 0 cells of chanels are aligned
     int No_of_Ch;
-    int NullEventCNT[5];
+    int NullEventCNT[5]; // counter of null events
+    int GoodArrivalCNT[5]; // counter of events whos arrival time is >30 ns <50 ns, which are writen into the TotShape
     
     // root TTree variables
     WaveformParam WFParamPM1, WFParamPM2, WFParamS3, WFParamS4;
