@@ -43,7 +43,7 @@ using namespace DRS4_data;
 
 int main (int argc, const char * argv[]) {
 	
-
+TH1::AddDirectory(kFALSE);
 	
 	float RawTimeArr[1024];
 	float RawVoltArr[1024];

@@ -246,13 +246,16 @@ if(DAfile.is_open())
 				 SetNoOfChannels(ChCounter);
 		
 				string1="";
-		// ocitano je da "EHDR" i ide se na ocitavanje dogadjaja
-		while (!DAfile.eof()) {//this loop until there is no more of any event i.e end of the file
+	
 			DAfile.read(word, 4);
-			eventID=convertChtoUint(word); // first word after "EHDR"
+			eventStart=eventID=convertChtoUint(word); // first word after "EHDR"
 			//cout<<"Event: "<<eventID<<endl;
 			
-			 setEventID(eventID);
+			 setEventID(eventID);			
+				
+		// ocitano je da "EHDR" i ide se na ocitavanje dogadjaja
+		while (!DAfile.eof()) {//this loop until there is no more of any event i.e end of the file
+
 			 
 			 if ((float)((int)((float)eventID/500.))==(float)eventID/500.) cout << "Event: "<<eventID<<endl;
 			
@@ -334,10 +337,13 @@ if(DAfile.is_open())
 			
 			t3 = ArrivalTime (GetTempHist(CHS3), getTriggerHeight(), WFParamS3.baseLine, 3., 0.4); // not necessary to have a same fraction (FRACTION) as PM1 and PM2
 			t4 = ArrivalTime (GetTempHist(CHS4), getTriggerHeight(), WFParamS4.baseLine, 3., 0.4);
+//cout<< "WFParamPM1.FWHM="<< WFParamPM1.FWHM <<endl;
+		if (eventID<20) PrintCurrentHist(1);
 			
 			TimeRef=(t4+t3)/2;
 			
-			UnitResponseFinder(GetTempHist(1), TimeRef, &NUnits, Units_in_Peak);// Units_in_Peak holds pas and ampl, NUnits - how many are find
+			// if FWHM < 6. it doesn't qualify to be a response, also saturated peaks don't qualify
+			if ((WFParamPM1.FWHM>6.)&&(WFParamPM1.maxVal<490.)) UnitResponseFinder(GetTempHist(1), TimeRef, &NUnits, Units_in_Peak);// Units_in_Peak holds pas and ampl, NUnits - how many are find
 			
 			/// see how to compile Units_in_Peak
 			
@@ -357,7 +363,7 @@ if(DAfile.is_open())
 			FillTotHistogramsNonAlligned(WFParamPM1.arrivalTime2, WFParamPM2.arrivalTime2, WFParamS3.arrivalTime2, WFParamS4.arrivalTime2);
 			if (DEBUG) cout<<"Total histograms filled."<<flush<<endl;
 			
-		
+
 
 			if ((WFParamPM1.FW10pcntM>30.)&&(WFParamPM1.maxVal>15.)&&(cnttmp<5))
 			{ 
@@ -379,8 +385,17 @@ if(DAfile.is_open())
 			}
 			if (DEBUG) cout<<"Deleting Temp histograms"<<endl;
 			 DeleteTempHistograms();
+			 
+			 //if(eventID>eventStart+1000) break;
+			if(!DAfile.eof()){ // don't read if end of file, it will erase eventID
+				DAfile.read(word, 4);
+				eventID=convertChtoUint(word); // first word after "EHDR"
+				setEventID(eventID);
+			}
 
 	}// while !eof, go to read new event
+	
+
 				
 } // end of DAfile.is_open
 
@@ -388,12 +403,12 @@ if (DEBUG) cout<<"Scaling TotShapeHistograms"<<endl;
 
 	TotShapeNA[Ch_PM1]->Scale(1/(float)(GoodArrivalCNT[Ch_PM1]));
 	TotShapeNA[Ch_PM2]->Scale(1/(float)(GoodArrivalCNT[Ch_PM2]));
-	TotShapeNA[Ch_S3]->Scale(1/(float)(eventID));
-	TotShapeNA[Ch_S4]->Scale(1/(float)(eventID));	
+	TotShapeNA[Ch_S3]->Scale(1/(float)(eventID-eventStart));
+	TotShapeNA[Ch_S4]->Scale(1/(float)(eventID-eventStart));	
 	
 
 for (i=1;i<=4;i++){
-	cout<<"eventID="<<eventID<<", NullEventCNT["<<i<<"]="<<NullEventCNT[i]<<", GoodArrival["<<i<<"]="<<GoodArrivalCNT[i]<<endl;
+	cout<<"eventID-eventStart="<<eventID-eventStart<<", NullEventCNT["<<i<<"]="<<NullEventCNT[i]<<", GoodArrival["<<i<<"]="<<GoodArrivalCNT[i]<<endl;
 	if (NullEventCNT[i]!=0) NullEventShape[i]->Scale(1/(float)NullEventCNT[i]);
 	if (NullEventCNT[i]!=0) NullEventShapeNA[i]->Scale(1/(float)NullEventCNT[i]);
 }
@@ -407,7 +422,7 @@ for (i=1;i<=4;i++){
 }
 
 
-cout<<"Null Event % = "<<((float)NullEventCNT[1]/2+NullEventCNT[2]/2)/(float)eventID*100<<endl; // Null event for PM1 and PM2
+cout<<"Null Event % = "<<((float)NullEventCNT[1]/2+NullEventCNT[2]/2)/(float)(eventID-eventStart)*100<<endl; // Null event for PM1 and PM2
 
 paramTree -> Write();
 
@@ -1193,17 +1208,17 @@ float WaveProcessor::ArrivalTime2(const TH1F* hist, float baseLine, const float 
 	return tArrival;
 }
 /*
-void WaveProcessor::GetPeakParameters(const TH1F* hist, PeakDerivativesAroundFractionPoint* output){
-	GetPeakParameters(const TH1F* hist, PeakDerivativesAroundFractionPoint* output, float fract);
+void WaveProcessor::GetPeakParameters(const TH1F* hist, PeakDerivatives* output){
+	GetPeakParameters(const TH1F* hist, PeakDerivatives* output, float fract);
 	}
 */
-int WaveProcessor::GetPeakParameters(const TH1F* hist, PeakDerivativesAroundFractionPoint* output, float fraction){
+int WaveProcessor::GetPeakParameters(const TH1F* hist, PeakDerivatives* output, float fraction){
 
 	float baseLineEnd(BASELINEEND), arTm;
 	Float_t sumBin(0);
 	Int_t Nbins(NBINS);
 	TH1F* smoothHist = (TH1F*) hist->Clone();
-	TH1F* subtractHist = (TH1F*) hist->Clone();
+	//TH1F* subtractHist = (TH1F*) hist->Clone();
 	float stepDeriv1[5], stepDeriv2[4], stepDeriv3[3];
 	int i, j;
 	for(j=(int)((float)avging/2.)+1; j<=Nbins-(int)((float)avging/2.); j++){
@@ -1228,12 +1243,16 @@ int WaveProcessor::GetPeakParameters(const TH1F* hist, PeakDerivativesAroundFrac
 	float baseLine = smoothHist->Integral(0, smoothHist->FindBin(baseLineEnd-delay), "width") / (baseLineEnd-delay) ; 
 	arTm = ArrivalTime2(hist, baseLine, fract); // last nuber is a fraction at
 	
-	if (!arTm)
+	if(DEBUG4) cout<<"arTm="<<arTm<<", binCenter="<<hist->FindFixBin(arTm)<<", baseLine"<<baseLine<<endl;
 	
-	output->crossBin = hist->GetBinCenter(arTm);
+	
+
+	output->crossBin = hist->FindFixBin(arTm); // fixBin instead normal since hist is const and FindBin may attempt to change axis
 	
 	// calculate values and step derivatives - will be used to determine what amplitude of unit response to subtract
 	//values
+	if(DEBUG4) cout<<"crossBin"<<output->crossBin<<flush<<endl;
+	if(DEBUG4) cout<<"smoothHist(crossBin)"<<smoothHist->GetBinContent(output->crossBin)<<flush<<endl;
 	for (i=0; i<(avging+1); i++)	output->smoothVal[i]=smoothHist->GetBinContent(output->crossBin-2*avging+i*avging);
 	// first derivatives
 	for (i=0; i<avging; i++) output->stepDeriv1[i] = output->smoothVal[i+1] - output->smoothVal[i];
@@ -1252,6 +1271,7 @@ int WaveProcessor::GetPeakParameters(const TH1F* hist, PeakDerivativesAroundFrac
 void WaveProcessor::InitializeUnitParameters(){
 	TH1F* BaseLineShape;
 	UnitShape = GetUnitHistogramRaw();
+	UnitParameters = new PeakDerivatives;
 	BaseLineShape = GetBaseLineHistogramRaw();
 	
 	for(int i=1; i<=1024; i++) UnitShape->SetBinContent(i,UnitShape->GetBinContent(i)-BaseLineShape->GetBinContent(i));
@@ -1264,21 +1284,33 @@ void WaveProcessor::InitializeUnitParameters(){
 
 void WaveProcessor::UnitResponseFinder(TH1F* hist, float TRef, int* NofUnits, UnitPosAmpl* output){ //must return positions and amplitudes of the unit responses
 	output = new UnitPosAmpl[40]; // don't expect >40, would mean 1 for each ns for 40ns
-	PeakDerivativesAroundFractionPoint *PeakParam;
+	PeakDerivatives *PeakParam = new PeakDerivatives;
+	
+	char* histfilename;
+	histfilename = new char[60];
+
+	bool drawFlag(false);
+	sprintf(histfilename, "HistSubtract%i_event%i_d%im%iy%i_%i:%i:%i::%i.pdf", 1, eventID, dateStmp.day, dateStmp.month, dateStmp.year, dateStmp.hour, dateStmp.minute, dateStmp.second, dateStmp.milisecond);
+	TCanvas *canvTempShape = new TCanvas("HistSubtract", histfilename,1);
+	
+	Float_t FirstUnitAmplitude;
 	
 	float stepDeriv1[5], stepDeriv2[4], stepDeriv3[3];
-	int cnt(0);
+	int cnt(0), i(0);
 	// declarations of matrices for gaussj; 3 for matrix with value, 1st derivative and 2nd derivative
-    double **a  = matrix(1, 3, 1, 3); // coefficient matrix, A.x = b
-    double **b  = matrix(1, 3, 1, 1); // b has more column when you have more solutions A.x=b[1], A.x=b[2] ...
+	double **a2  = matrix(1, 2, 1, 2); // coefficient matrix, A.x = b
+    double **b2  = matrix(1, 2, 1, 1);
+    double **a3  = matrix(1, 3, 1, 3); // coefficient matrix, A.x = b
+    double **b3  = matrix(1, 3, 1, 1); // b has more column when you have more solutions A.x=b[1], A.x=b[2] ...
     // convention - a[i][j] -> i-row, j-column
 
 	TH1F* HistSubtract= (TH1F*) hist->Clone();
 	TH1F* UnitClone=  (TH1F*) UnitShape->Clone();
-	
+	TH1F* mark = new TH1F("mark","mark", 1024, 0, 200);
+	if(DEBUG4) cout<<"UnitResponseFinder entered"<<endl;
 	while ((GetPeakParameters(HistSubtract, PeakParam, fract))!=-1) {// if -1, peak bellow threshold
-
-		if (cnt>=40) break;
+		if (DEBUG4) cout<<"While loop GetPeakParameters:"<<cnt<<flush<<endl;
+		if ((cnt>=40)||(PeakParam->crossBin<20)||(PeakParam->crossBin>800)) break;
 		// total rising edge of Unit is 38 bins (from 0 to peak), decay is 196 (from peak to 0.2 mV) - there is a long tail
 		// if fract=0.2, 0.2*38 = 7.6 -> no sense to calculate second derivative if avging>3 !!
 		// 0.3*38=11.4, avging<~4 need second derivative; for avging=5 fract=0.4 need third derivative, etc
@@ -1286,38 +1318,95 @@ void WaveProcessor::UnitResponseFinder(TH1F* hist, float TRef, int* NofUnits, Un
 		// KEEP IN MIND !
 			
 		// smoothVal[2] is a smooth value at crossBin = hist->FindFirstAbove(fraction*(hist->GetMaximum()));
-		b[1][1]=PeakParam->smoothVal[2];
-		b[1][2]=PeakParam->stepDeriv1[2];
-		b[1][3]=PeakParam->stepDeriv2[2]; 
+		b2[1][1]=b3[1][1]=PeakParam->smoothVal[2];
+		b2[1][2]=b3[1][2]=PeakParam->stepDeriv1[2];
+		b3[1][3]=PeakParam->stepDeriv2[2]; 
 		// 
-		a[1][1]=UnitParameters->smoothVal[2];  a[2][1]=UnitParameters->smoothVal[1];  a[3][1]=UnitParameters->smoothVal[0];
-		a[2][1]=UnitParameters->stepDeriv1[2]; a[2][2]=UnitParameters->stepDeriv1[1]; a[2][3]=UnitParameters->stepDeriv1[0];
-		a[3][1]=UnitParameters->stepDeriv2[2]; a[3][2]=UnitParameters->stepDeriv2[1]; a[3][3]=UnitParameters->stepDeriv2[0];
+		a2[1][1]=a3[1][1]=UnitParameters->smoothVal[2];  a2[2][1]=a3[2][1]=UnitParameters->smoothVal[1];  a3[3][1]=UnitParameters->smoothVal[0];
+		a2[2][1]=a3[2][1]=UnitParameters->stepDeriv1[2]; a2[2][2]=a3[2][2]=UnitParameters->stepDeriv1[1]; a3[2][3]=UnitParameters->stepDeriv1[0];
+		a3[3][1]=UnitParameters->stepDeriv2[2]; a3[3][2]=UnitParameters->stepDeriv2[1]; a3[3][3]=UnitParameters->stepDeriv2[0];
 		
-		gaussj(a, 3, b, 1); // b is overwritten by the solution 
+		gaussj(a3, 3, b3, 1); // b3 is overwritten by the solution 
 		// Only the first UnitResponse will be subtracted in order to avoid probable error accumulation
+		if(DEBUG4) cout<<"b3[1][1]="<<b3[1][1]<<", b3[1][2]="<<b3[1][2]<<"b3[1][3]="<<b3[1][3]<<endl;
+		if ((b3[1][3]>0.)&&(b3[1][2]>0.)) FirstUnitAmplitude = b3[1][1];
+		else { 
+			gaussj(a2, 2, b2, 1);
+			if(DEBUG4) cout<<"b2[1][1]="<<b2[1][1]<<", b2[1][2]="<<b2[1][2]<<endl;
+			if (b2[1][2]>0.) FirstUnitAmplitude = b2[1][1];
+			else FirstUnitAmplitude=PeakParam->smoothVal[2]/(UnitParameters->smoothVal[2]);
+		}
+		if(DEBUG4) cout<<"FirstUnitAmplitude="<<FirstUnitAmplitude<<endl;
+		//FirstUnitAmplitude=FirstUnitAmplitude>(PeakParam->maxVal/UnitParameters->maxVal)?(PeakParam->maxVal/UnitParameters->maxVal):FirstUnitAmplitude;
 		
-		UnitClone->Scale(b[1][1]); 
+		//UnitClone->Scale(FirstUnitAmplitude*0.48); 
+		if(DEBUG4) cout<<"crossBin="<<PeakParam->crossBin<<endl;
+		if(DEBUG4) cout<<"FirstUnitAmplitude="<<FirstUnitAmplitude<<endl;
+		
 		/** fract and averaging should be considere for the number of derivatives **/
 
 		
 		// rise edge is 38 bins, decay edge of the Unit is 194 (after the peak maximum)
 		
-		for (int i=-(int)38*(fract+0.2); i<=((int)(38*(1.-fract-0.2))+194); i++)// there is a 20% more bin left from fract cross point for all reasonable fract values
-			hist->SetBinContent(i+PeakParam->crossBin, hist->GetBinContent(i+PeakParam->crossBin)-UnitClone->GetBinContent(i+UnitParameters->crossBin));
+		for (int i=-(int)38*(fract+0.2); i<=((int)(38*(1.-fract-0.2))+194); i++){// there is a 20% more bin left from fract cross point for all reasonable fract values
+			//cout<<i+PeakParam->crossBin<<": histGetcontent="<<HistSubtract->GetBinContent(i+PeakParam->crossBin)<<", Setcontent:"<<HistSubtract->GetBinContent(i+PeakParam->crossBin)-UnitClone->GetBinContent(i+UnitParameters->crossBin)<<endl;
+			
+			
+			HistSubtract->SetBinContent(i+PeakParam->crossBin, HistSubtract->GetBinContent(i+PeakParam->crossBin)-1.0*FirstUnitAmplitude*UnitClone->GetBinContent(i+UnitParameters->crossBin));
+			
+		}
+
 		// crossBin is referent point for both peak arrivals
 		
 		// the first arrival is subtracted, repeat the process until the hist is leveled down.
 		
-		UnitClone->Scale(1/b[1][1]); // go back to original Unit which corresponds to original parameters
-		output[cnt].position=TRef - HistSubtract->GetBinCenter(PeakParam->crossBin); // u odnosu na sta ??   HistSubtract
-		output[cnt].amplitude=b[1][1];
+		//UnitClone->Scale(1/FirstUnitAmplitude/0.48); // go back to original Unit which corresponds to original parameters
+		output[cnt].position= HistSubtract->GetBinCenter(PeakParam->crossBin) - TRef; // u odnosu na sta ??   HistSubtract
+		output[cnt].amplitude=FirstUnitAmplitude;
+		if (DEBUG4) cout<<cnt<<": Tref="<<TRef<<", crossBin="<<PeakParam->crossBin<<", position="<<output[cnt].position<<endl;
+		if (output[cnt].position>5.) drawFlag = true;
 		cnt++;
 	
 	}
+	if(DEBUG4) cout<<"exit Whileloop UnitFinder \n"<<"cnt="<<cnt<<endl;
+	
+	if (drawFlag||(cnt>=40)||(eventID-eventStart<40)) {
 
-	if (cnt>=40) {cout<<"too many Unit responses. Exiting..."<<endl; exit(EXIT_FAILURE);}
+		if (DEBUG4) cout<<"Canvas defined"<<endl<<flush;
+
+		//TPolyMarker *pm = new TPolyMarker(cnt+1);	
+		mark->SetMarkerStyle(kFullTriangleDown);
+		mark->SetMarkerColorAlpha(kRed, 0.7);
+		mark->SetMarkerSize(2);
+
+		hist->SetMaximum(1.3*hist->GetMaximum());
+		hist->SetMinimum(-0.2*hist->GetMaximum());	
+
+		for (i=0; i<cnt; i++) {
+			if (output[i].amplitude<1.) mark->SetMarkerStyle(kFullTriangleDown);
+			else mark->SetMarkerStyle(kFullTriangleUp);
+			mark->Fill(output[i].position+TRef, output[i].amplitude<1.1?(output[i].amplitude*UnitParameters->maxVal):(hist->GetMaximum()-5.));//output[i].position, 0.5);//output[i].amplitude);
+			cout<<"event("<<eventID<<"):TRef("<<TRef<<"):: postition="<<output[i].position<<", amplitude="<<output[i].amplitude*UnitParameters->maxVal<<endl;
+		}
+		hist->Draw("hist PLC PMC");
+		mark->Draw("same");
+		HistSubtract->Draw("hist PLC PMC SAME");
+		if (DEBUG4) cout<<"Histogram Draw"<<endl<<flush;
+		canvTempShape->SaveAs(histfilename);
+	}
+
+
+	if (cnt>=40) {cout<<"too many Unit responses. In Event No="<<eventID<<endl;} //exit(EXIT_FAILURE);}
 	*NofUnits=cnt;
+	delete histfilename;
+	mark->Delete();
+	delete canvTempShape;
+		//delete gDirectory->FindObject("TempShapeCh1");
+	
+	free_matrix(a2,1,2,1,2);
+	free_matrix(a3,1,3,1,3);
+	free_matrix(b2,1,2,1,1);
+	free_matrix(b3,1,3,1,1);	
 	}
 	
 

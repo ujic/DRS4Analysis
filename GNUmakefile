@@ -14,7 +14,7 @@ CC = g++
 .cxx.o:
 	$(CC) $(CXXFLAGS) -c $*.cxx
 
-CXXFLAGS      =  -O -g -ggdb -Wall -fPIC # -g -ggdb debug options
+CXXFLAGS      =  -O3 -fPIC # -g -ggdb -Wall debug options, -O old optimization, put instead -O3 if it doesn't work
 ROOTCFLAGS    = $(shell root-config --cflags)
 ROOTLIBS      = $(shell root-config --libs)
 ROOTGLIBS     = $(shell root-config --glibs)
@@ -23,7 +23,7 @@ ROOTGLIBS     = $(shell root-config --glibs)
 CXXFLAGS     += $(ROOTCFLAGS)
 LIBS          = $(ROOTLIBS) $(SYSLIBS)
 GLIBS         = $(ROOTGLIBS) $(SYSLIBS)
-RLIBS         = $(ROOTLIBS)  $(ROOTGLIBS)  
+RLIBS         = $(ROOTLIBS)  #$(ROOTGLIBS)  
 
 ALL=DA
 

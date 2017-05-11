@@ -11,7 +11,8 @@
 
 #define DEBUG 0
 #define DEBUG2 0 // 
-#define DEBUG3 0 // CreateHistograms debug (
+#define DEBUG3 0 // CreateHistograms debug 
+#define DEBUG4 0 // UnitResponse debug
 #define CHPM1 1 // first scintillator
 #define CHPM2 2 // second
 #define CHS3 3 // ch of first trigger
@@ -19,7 +20,7 @@
 #define BASELINE 3 // ad-hoc baseline in mV
 #define BASELINEEND 30. // the end point of the baseline (it is integrated from 0 ns to BASELINEEND ns
 #define NBINS 1024 // usually for DRS4 it's 1024 ...
-#define FRACTION 40 // in % used for the constant fraction correction
+#define FRACTION 20 // in % used for the constant fraction correction
 					/** FRACTION is better to be small **/
 #define AVERAGING 5 // how many bins to average in creating smoothHist used to determine the derivatives(slopes)
 					// of the peak 
@@ -42,6 +43,7 @@
 #include "TFile.h"
 #include "TTree.h"
 #include "TFitResultPtr.h"
+//#include "TPolyMarker.h"
 
 
 #include "observables.h"
@@ -54,7 +56,7 @@ using namespace std;
 typedef unsigned short USHORT;
 typedef signed short SSHORT; 
 
-struct PeakDerivativesAroundFractionPoint{
+struct PeakDerivatives{
 	float maxVal;
 	int crossBin; // Bin where is the value fract*maxVal
 	float smoothVal[AVERAGING+1];
@@ -124,7 +126,9 @@ class WaveProcessor {
     void setDelay(float value) {delay = value;}
     float getDelay() const {return delay;}
     void setEventID(unsigned int value) {eventID = value;}
-    int getEventID() const {return eventID;}
+    unsigned int getEventID() const {return eventID;}
+    void setEventStart(unsigned int value) {eventStart = value;}
+    unsigned int getEventStart() const {return eventStart;}
     void setDateStamp(date value) {dateStmp=value;}
     date getDateStamp() const {return dateStmp;}
     void SetNoOfChannels(int Ch) {No_of_Ch = Ch;}
@@ -167,7 +171,7 @@ class WaveProcessor {
     
     private:										// PRIVATE:
     
-    PeakDerivativesAroundFractionPoint* UnitParameters;
+    PeakDerivatives* UnitParameters;
     
     const float fract;
     const int avging;
@@ -176,7 +180,7 @@ class WaveProcessor {
     static float MeanAndRMS(const TH1F*, int first, int last, float &mean, float &rms);
     static float ArrivalTime(const TH1F*, float, float, float, float);
     float ArrivalTime2(const TH1F*, float, const float);
-    int GetPeakParameters(const TH1F*, PeakDerivativesAroundFractionPoint*, float); 
+    int GetPeakParameters(const TH1F*, PeakDerivatives*, float); 
     // return maxVal, 1st, 2nd and 3rd derivative around fraction crosspoint - all for smothened histogram !!!!
     
     void RemoveSpikes(float, short); // removes spikes of given threshold (float) in mV and given width (in bins) - usually 2
@@ -191,6 +195,7 @@ class WaveProcessor {
     float range;
     float scaller;
     unsigned int eventID;
+    unsigned int eventStart; // some runs start form  int 10000.
     date dateStmp;
     float baseLineAVG;
     int baseLineCNT;
