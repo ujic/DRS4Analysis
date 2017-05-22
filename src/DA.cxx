@@ -1,17 +1,19 @@
 // DA.cpp
 /// *******************
-/// Data Analisys of Fast Hadronic Calorimeter - FastHCal
+/// Data Analisys of Fast Hadronic Calorimeter - FHCal
 /// Created 27/4/2017
 /// by Predrag Ujic
 /// *****
 
-
+/// 
 
 
 
 // 24.4.2017. USHORT changed to SSHORT for amplitudes, except trigger_cell  and date structure!!!!!!
 
 // TO DO:
+
+/** eventID doesn't start allways from zero, software divided files starts from int(10000) !!!!!!!! **/
 
 /// to introduce spike rejection !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
@@ -41,7 +43,7 @@ using namespace DRS4_data;
 
 int main (int argc, const char * argv[]) {
 	
-
+TH1::AddDirectory(kFALSE);
 	
 	float RawTimeArr[1024];
 	float RawVoltArr[1024];
@@ -55,10 +57,8 @@ int main (int argc, const char * argv[]) {
    char cchh;
    float trgIN;
    float delayIN;
-   
-
-	
-   
+     
+   	
    	
 	if (argc > 3) {
 		strcpy(filename, argv[1]);
@@ -83,7 +83,7 @@ int main (int argc, const char * argv[]) {
 	
 	cout<<"DA.cxx"<<flush<<endl;
 	
-	dateStamp = DataHandler->getDateStamp();
+	//dateStamp = DataHandler->getDateStamp();
 	
 // ANALYSIS ....
 
