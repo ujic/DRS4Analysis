@@ -1,11 +1,11 @@
 // DA.cpp
 /// *******************
-/// Data Analisys of Fast Hadronic Calorimeter - FastHCal
+/// Data Analisys of Fast Hadronic Calorimeter - FHCal
 /// Created 27/4/2017
 /// by Predrag Ujic
 /// *****
 
-
+/// 
 
 
 
@@ -57,10 +57,8 @@ TH1::AddDirectory(kFALSE);
    char cchh;
    float trgIN;
    float delayIN;
-   
-
-	
-   
+     
+   	
    	
 	if (argc > 3) {
 		strcpy(filename, argv[1]);

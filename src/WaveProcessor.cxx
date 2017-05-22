@@ -47,6 +47,9 @@ WaveProcessor::WaveProcessor() :
 	NullEventShapeNA[3] = new TH1F("NullEventShapeNACh3", "Null Event Time Shape of channel 3", NBINS, 0, 200); 
 	NullEventShapeNA[4] = new TH1F("NullEventShapeNACh4", "Null Event Time Shape of channel 4", NBINS, 0, 200);	
 	
+	UnRespDistrPM1 = new TH1F("UnRespDistrPM1", "Unit Response distribution", NBINS, 0, 200);
+	UnRespDistrPM2 = new TH1F("UnRespDistrPM2", "Unit Response distribution", NBINS, 0, 200);
+	
 	}
 
 WaveProcessor::~WaveProcessor(){
@@ -57,7 +60,8 @@ WaveProcessor::~WaveProcessor(){
 		delete NullEventShape[i];
 		delete NullEventShapeNA[i];
 	}
-
+	UnRespDistrPM1->Delete();
+	UnRespDistrPM2->Delete();
 }
 
 void WaveProcessor::InitializeAnalysisTree(){
@@ -79,6 +83,10 @@ void WaveProcessor::InitializeAnalysisTree(){
 	paramTree -> Branch("Eof10nsPM1",&WFParamPM1.Eof10ns,"Eof10nsPM1/F");
 	paramTree -> Branch("FWHMPM1",&WFParamPM1.FWHM,"FWHMPM1/F");
 	paramTree -> Branch("FW10pcntMPM1",&WFParamPM1.FW10pcntM,"FWH10pcntPM1/F");	
+	paramTree -> Branch("NUnitsPM1", &NUnitsPM1, "NUnitsPM1/F");
+	paramTree -> Branch("UnRespAmplitudePM1", Units_in_PeakPM1, "Unit_in_PeakPM1[NUnitsPM1].amplitude/F");
+	paramTree -> Branch("NUnitchi2PM1", &NUnitchi2PM1, "NUnitchi2PM1/F");
+	
 	//PM2
 	paramTree -> Branch("arrivalTimePM2",&WFParamPM2.arrivalTime,"arrivalTimePM2/F");
 	paramTree -> Branch("arrivalTimeRawPM2",&WFParamPM2.arrivalTimeRaw,"arrivalTimeRawPM2/F");
@@ -94,6 +102,10 @@ void WaveProcessor::InitializeAnalysisTree(){
 	paramTree -> Branch("Eof10nsPM2",&WFParamPM2.Eof10ns,"Eof10nsPM2/F");
 	paramTree -> Branch("FWHMPM2",&WFParamPM2.FWHM,"FWHMPM2/F");
 	paramTree -> Branch("FW10pcntMPM2",&WFParamPM2.FW10pcntM,"FWH10pcntPM2/F");	
+	paramTree -> Branch("NUnitsPM2", &NUnitsPM2, "NUnitPM2/F");
+	paramTree -> Branch("UnRespAmplitudePM2", Units_in_PeakPM2, "Unit_in_PeakPM2[NUnitsPM2].amplitude/F");
+	paramTree -> Branch("NUnitchi2PM2", &NUnitchi2PM2, "NUnitchi2PM2/F");
+	
 	// S3
 	paramTree -> Branch("arrivalTimeS3",&WFParamS3.arrivalTime,"arrivalTimeS3/F");
 	paramTree -> Branch("arrivalTimeRawS3",&WFParamS3.arrivalTimeRaw,"arrivalTimeRawS3/F");
@@ -129,11 +141,14 @@ float WaveProcessor::get_time_calibration(int ch, int bin ) const {return TimeBi
 void WaveProcessor::set_bin_time_n_voltage(int ch, int bin, SSHORT voltage, SSHORT range, USHORT trigger_Cell){
 	float aux_f=0; 
 	aligned=false; // any change of time induce that the alignment is no more valid
-	
-	//BinVoltage[ch][bin]=(-((float)voltage)/65536. + ((float)range)/1000.); // this way the amplitude is inverted (positive in our case)
-	BinVoltage[ch][bin]=(-((float)voltage)/10. + ((float)range)/1000.); // because the values writen in the DAQ file are 0.1 mV, not just USHORT to be divided by 65536
-	for (int k=0; k<bin ; k++)	aux_f += TimeBinWidth[ch][((k+trigger_Cell) % 1024)];
-	TimeBinVoltage[ch][bin]=aux_f;
+
+		//BinVoltage[ch][bin]=(-((float)voltage)/65536. + ((float)range)/1000.); // this way the amplitude is inverted (positive in our case)
+		if (bin!=1024) BinVoltage[ch][bin]=(-((float)voltage)/10. + ((float)range)/1000.); // because the values writen in the DAQ file are 0.1 mV, not just USHORT to be divided by 65536
+		//for (int k=1; k<bin+1 ; k++)	aux_f += TimeBinWidth[ch][((k-1+trigger_Cell) % 1024)];
+		//TimeBinVoltage[ch][bin]=aux_f;
+		if (bin!=0) TimeBinVoltage[ch][bin]=TimeBinVoltage[ch][bin-1]+TimeBinWidth[ch][((bin-1+trigger_Cell) % 1024)];
+		else TimeBinVoltage[ch][0]=0.0;
+
 }
 
 
@@ -166,275 +181,6 @@ void WaveProcessor::allignCells0(USHORT trigger_cell){ // align cell #0 of all c
 
 
 
-void WaveProcessor::ProcessFile(char* filename){
-	
-	int Ch_PM1(CHPM1), Ch_PM2(CHPM2), Ch_S3(CHS3), Ch_S4(CHS4);
-	ifstream DAfile (filename, ios::in|ios::binary);
-	char word[4], small_word[2];
-	char filenameROOT[256];
-	int ChCounter(1);
-	int i, j, cnttmp(0);
-	date dateStmp;
-	SSHORT aux_SSHORT;
-	USHORT trigCell;
-	string string1;
-	float t3,t4;
-	UnitPosAmpl* Units_in_Peak; // unit responses in signal with their amplitudes and time positions 
-	int NUnits; // this will contain how many peaks were returned by UnitResponseFinder
-
- 
- /*     
-    WaveformParam WFParamCh1; // for one counter of the scintillator counter
-	WaveformParam WFParamCh2; // for the other one
-	WaveformParam WFParamCh3; 
-	WaveformParam WFParamCh4; 
-
-	
-	
-	TH1F* FWHMCh1 = new TH1F("FWHMCh1", "FWHM of S1", 100, 4, 15);
-	TH1F* FWHMCh2 = new TH1F("FWHMCh2", "FWHM of S2", 100, 4, 15);
-	TH1F* FWHMCh3 = new TH1F("FWHMCh3", "FWHM of S3", 100, 4, 15);
-	TH1F* FWHMCh4 = new TH1F("FWHMCh4", "FWHM of S4", 100, 4, 15);
-*/
-
-	//string1="root/";
-	//string1.append(filename);
-	string1="";
-	string1.append(filename);
-	string1.erase(string1.end()-4, string1.end());
-	string1.append("_trig=");
-	string1.append(to_string(triggerHeight));
-	string1.append("_delay=");
-	string1.append(to_string(delay));
-	string1.append("_analys.root");
-	
-	std::size_t lengthS = string1.copy(filenameROOT,string1.length(),0);
-	filenameROOT[lengthS]='\0';
-	
-	cout<<"Open " << filenameROOT <<endl;
-	f = new TFile(filenameROOT, "recreate");
-	
-	InitializeAnalysisTree();
-	InitializeUnitParameters(); // form a UnitShape histogram containint the shape of the Unit response 
-								// GetUnitHistogramRaw subtracted by GetBaseLineHistogramRaw
-	
-if(DAfile.is_open())
-	{    
-		for (i=0; i<4; i++) DAfile.read(word, 4); // first four words are allways file header, time header, board serial No and Channel1 header
-		string1="";
-		for (i=0; i<4; i++) string1+=word[i];
-		if (DEBUG) cout<<"Ch. header: "<<string1<<endl<<flush;
-		string1="";
-		while (string1!="EHDR"){ // prvi put kad naidje na EHDR, znaci da vise nema kanala za citanje kalibracije
-			for (i=0; i<1024; i++){ //after that allways followed by the time calibration of the CH1
-				DAfile.read(word, 4);
-							
-				if(DEBUG) cout<<"Calib: ChCounter="<< ChCounter<<", bin="<<i<<", value="<<convertChtoF(word)<<endl<<flush;
-				
-				 set_time_calibration(ChCounter, i, convertChtoF(word));
-			}
-			
-			DAfile.read(word, 4);
-			string1="";
-			for (i=0; i<4; i++) string1+=word[i];
-			if (string1=="C002") ChCounter=2;
-			if (string1=="C003") ChCounter=3;
-			if (string1=="C004") ChCounter=4;
-		if (DEBUG) cout<<"Next ch. header: "<<string1<<endl<<flush;
-			//cin>>cchh;
-		}
-				 SetNoOfChannels(ChCounter);
-		
-				string1="";
-	
-			DAfile.read(word, 4);
-			eventStart=eventID=convertChtoUint(word); // first word after "EHDR"
-			//cout<<"Event: "<<eventID<<endl;
-			
-			 setEventID(eventID);			
-				
-		// ocitano je da "EHDR" i ide se na ocitavanje dogadjaja
-		while (!DAfile.eof()) {//this loop until there is no more of any event i.e end of the file
-
-			 
-			 if ((float)((int)((float)eventID/500.))==(float)eventID/500.) cout << "Event: "<<eventID<<endl;
-			
-			DAfile.read(small_word,2);  
-			dateStmp.year=convertChtoUSHORT(small_word);  
-			DAfile.read(small_word,2);
-			dateStmp.month=convertChtoUSHORT(small_word);
-			DAfile.read(small_word,2);
-			dateStmp.day=convertChtoUSHORT(small_word);
-			DAfile.read(small_word,2);
-			dateStmp.hour=convertChtoUSHORT(small_word);
-			DAfile.read(small_word,2);
-			dateStmp.minute=convertChtoUSHORT(small_word);
-			DAfile.read(small_word,2);
-			dateStmp.second=convertChtoUSHORT(small_word);
-			DAfile.read(small_word,2);
-			dateStmp.milisecond=convertChtoUSHORT(small_word);
-			
-			DAfile.read(small_word,2);
-			range=convertChtoSSHORT(small_word); 
-			if (DEBUG) cout<<" range = "<<((float)range)/1000.<<endl;
-			
-			setDateStamp(dateStmp);
-
-			DAfile.read(word, 4); // this reads the board serial number, not needed for us
-			DAfile.read(small_word,2); // this is always "T#" marking that the next small_word is Number of first readout cell
-
-			DAfile.read(small_word,2);
-			trigCell=convertChtoUSHORT(small_word);
-			
-			for (j=1; j<=ChCounter; j++) {
-				DAfile.read(word, 4);
-				string1="";
-				for (i=0; i<3; i++) string1+=word[i];
-				if (string1!="C00") {
-					cout<<"string1:"<<string1<<endl;
-					cout<<"Error, C00x expected. Exiting..."<<endl;
-					exit(EXIT_FAILURE);
-				}
-				DAfile.read(word, 4);
-				scaller = convertChtoF(word);
-
-				
-				for (i=0; i<1024; i++){ 
-					DAfile.read(small_word,2);
-					//aux_USHORT=convertChtoUSHORT(small_word);
-					aux_SSHORT = convertChtoSSHORT(small_word);
-
-					 set_bin_time_n_voltage(j, i, aux_SSHORT, range, trigCell);
-				}//end for i
-			} //end for j
-			
-			if (DEBUG) cout<<"Aligning channels ..."<<eventID<<endl;
-			
-			 allignCells0(trigCell); // align cell #0 of all channels
-
-			//RemoveSpikes(1.5, 2); // (threshold, width in bins)
-			
-			if (DEBUG) cout<<"Create and fill histograms of an event: "<<eventID<<endl;
-
-			// CreateTempHistograms() will set bins 0,1, 1023,1022,1021 and 1020 same as bin 3 ... , because these bin have spikes-gliches
-			 CreateTempHistograms(); // <slower procedure>
-			 
-			 
-						
-						
-			if(eventID==1)  FilterFFTofCurrentHist(1);
-			
-			//cin>>cchh;
-
-			if (DEBUG) cout<<"give_waveform of event: "<<eventID<<endl;
-			
-			
-
-			if (ChCounter>=Ch_PM1) WFParamPM1 =  give_waveform_parameters(Ch_PM1); 
-			if (ChCounter>=Ch_PM2) WFParamPM2 =  give_waveform_parameters(Ch_PM2);
-			if (ChCounter>=CHS3) WFParamS3 =  give_waveform_parameters(CHS3); 
-			if (ChCounter>=CHS4) WFParamS4 =  give_waveform_parameters(CHS4);
-			
-			t3 = ArrivalTime (GetTempHist(CHS3), getTriggerHeight(), WFParamS3.baseLine, 3., 0.4); // not necessary to have a same fraction (FRACTION) as PM1 and PM2
-			t4 = ArrivalTime (GetTempHist(CHS4), getTriggerHeight(), WFParamS4.baseLine, 3., 0.4);
-//cout<< "WFParamPM1.FWHM="<< WFParamPM1.FWHM <<endl;
-		if (eventID<20) PrintCurrentHist(1);
-			
-			TimeRef=(t4+t3)/2;
-			
-			// if FWHM < 6. it doesn't qualify to be a response, also saturated peaks don't qualify
-			if ((WFParamPM1.FWHM>6.)&&(WFParamPM1.maxVal<490.)) UnitResponseFinder(GetTempHist(1), TimeRef, &NUnits, Units_in_Peak);// Units_in_Peak holds pas and ampl, NUnits - how many are find
-			
-			/// see how to compile Units_in_Peak
-			
-			WFParamPM1.arrivalTimeCorrected = WFParamPM1.arrivalTime2 - TimeRef + 30.; 
-			if (WFParamPM1.arrivalTime2==-1.) WFParamPM1.arrivalTimeCorrected=-1.;
-			WFParamPM2.arrivalTimeCorrected = WFParamPM2.arrivalTime2 - TimeRef + 30.;
-			if (WFParamPM2.arrivalTime2==-1.) WFParamPM2.arrivalTimeCorrected=-1.; 			
-			// 30 ns added just to put peaks on the Total histograms, where they are usually
-			
-			
-			
-			if (DEBUG) cout<<"Filling the tree..."<<flush<<endl;
-			paramTree -> Fill();
-			if (DEBUG) cout<<"The tree filled."<<flush<<endl;
-			FillTotHistograms(WFParamPM1.arrivalTimeCorrected, WFParamPM2.arrivalTimeCorrected, WFParamS3.arrivalTime2, WFParamS4.arrivalTime2);
-			if (DEBUG) cout<<"Filling FillTotHistogramsNonAlligned..."<<flush<<endl;
-			FillTotHistogramsNonAlligned(WFParamPM1.arrivalTime2, WFParamPM2.arrivalTime2, WFParamS3.arrivalTime2, WFParamS4.arrivalTime2);
-			if (DEBUG) cout<<"Total histograms filled."<<flush<<endl;
-			
-
-
-			if ((WFParamPM1.FW10pcntM>30.)&&(WFParamPM1.maxVal>15.)&&(cnttmp<5))
-			{ 
-				cnttmp++;
-				PrintCurrentHist(1);
-				PrintCurrentHist(4);
-				cout<<"baseLine="<<WFParamPM1.baseLine<<", baseLineRMS="<<WFParamPM1.baseLineRMS<<", maxVal="<<WFParamPM1.maxVal
-				<<", FW10pcntM="<<WFParamPM1.FW10pcntM<<endl;
-			}
-			if (DEBUG) cout<<"check if EHDR"<<endl;
-			
-			DAfile.read(word, 4); // if not eof, then it must be a new event
-			string1="";
-			for (i=0; i<4; i++) string1+=word[i];
-			if ((string1!="EHDR")&&(!DAfile.eof())){
-				
-				cout<<"Error, EHDR expected instead of"<< string1 <<endl;
-				exit(EXIT_FAILURE);
-			}
-			if (DEBUG) cout<<"Deleting Temp histograms"<<endl;
-			 DeleteTempHistograms();
-			 
-			 //if(eventID>eventStart+1000) break;
-			if(!DAfile.eof()){ // don't read if end of file, it will erase eventID
-				DAfile.read(word, 4);
-				eventID=convertChtoUint(word); // first word after "EHDR"
-				setEventID(eventID);
-			}
-
-	}// while !eof, go to read new event
-	
-
-				
-} // end of DAfile.is_open
-
-if (DEBUG) cout<<"Scaling TotShapeHistograms"<<endl;
-
-	TotShapeNA[Ch_PM1]->Scale(1/(float)(GoodArrivalCNT[Ch_PM1]));
-	TotShapeNA[Ch_PM2]->Scale(1/(float)(GoodArrivalCNT[Ch_PM2]));
-	TotShapeNA[Ch_S3]->Scale(1/(float)(eventID-eventStart));
-	TotShapeNA[Ch_S4]->Scale(1/(float)(eventID-eventStart));	
-	
-
-for (i=1;i<=4;i++){
-	cout<<"eventID-eventStart="<<eventID-eventStart<<", NullEventCNT["<<i<<"]="<<NullEventCNT[i]<<", GoodArrival["<<i<<"]="<<GoodArrivalCNT[i]<<endl;
-	if (NullEventCNT[i]!=0) NullEventShape[i]->Scale(1/(float)NullEventCNT[i]);
-	if (NullEventCNT[i]!=0) NullEventShapeNA[i]->Scale(1/(float)NullEventCNT[i]);
-}
-
-for (i=1;i<=4;i++){
-	cout<<"Write into histograms"<<endl;
-	TotShape[i]->Write();
-	TotShapeNA[i]->Write();
-	NullEventShape[i]->Write();
-	NullEventShapeNA[i]->Write();
-}
-
-
-cout<<"Null Event % = "<<((float)NullEventCNT[1]/2+NullEventCNT[2]/2)/(float)(eventID-eventStart)*100<<endl; // Null event for PM1 and PM2
-
-paramTree -> Write();
-
-cout<<"Tree writen..., closing root file..."<<flush<<endl;
-
-f->Close();
-
-cout<<"root file closed, closing dat file..."<<flush<<endl;
-DAfile.close();	
-cout<<"closed dat file..."<<flush<<endl;
-	
-}
 
 //////////////////////// CreateHistograms() ///////////////////////////////////////////////////////////////////////////////////////
 
@@ -447,33 +193,25 @@ void WaveProcessor::CreateTempHistograms(){
 		exit(EXIT_FAILURE);
 		}
 	for (int j=1; j<=No_of_Ch; j++){
-		for (int i=0; i<1024; i++) {
+		for (int i=0; i<=1024; i++) {
 			//time_aux[i] = TimeBinVoltage [j][i];
-			if (DEBUG3) cout<<"Allocation time_aux["<<i<<"]="<<TimeBinVoltage [j][i]<<endl;
+			 if (DEBUG3) cout<<"Allocation time_aux["<<i<<"]="<<TimeBinVoltage [j][i]<<endl;
 		}
-
-		
 		// temporary histograms for time shape, must be deleted after each event because they are rebinned each time
 		// it has to be done since the bins' widths are different, after the "rotation" every bin will not come in the coresponding
 		// bin, if their widths wouldn't be rotated as well
 		switch (j) {
-			case 1: TempShapeCh1 = new TH1F("TempShapeCh1", "Time Shape of channel 1", 1023, TimeBinVoltage [j]); break;// 1024 bins (1023 in definition), width in ns
-			case 2: TempShapeCh2 = new TH1F("TempShapeCh2", "Time Shape of channel 2", 1023, TimeBinVoltage [j]); break;
-			case 3: TempShapeCh3 = new TH1F("TempShapeCh3", "Time Shape of channel 3", 1023, TimeBinVoltage [j]); break;
-			case 4: TempShapeCh4 = new TH1F("TempShapeCh4", "Time Shape of channel 4", 1023, TimeBinVoltage [j]); break;
+			case 1: TempShapeCh1 = new TH1F("TempShapeCh1", "Time Shape of channel 1", NBINS, TimeBinVoltage [j]); break;// 1024 bins (1023 in definition), width in ns
+			case 2: TempShapeCh2 = new TH1F("TempShapeCh2", "Time Shape of channel 2", NBINS, TimeBinVoltage [j]); break;
+			case 3: TempShapeCh3 = new TH1F("TempShapeCh3", "Time Shape of channel 3", NBINS, TimeBinVoltage [j]); break;
+			case 4: TempShapeCh4 = new TH1F("TempShapeCh4", "Time Shape of channel 4", NBINS, TimeBinVoltage [j]); break;
 		}
 		
 		if (DEBUG3) cout<<"AllHist, bin 512 at: "<<	TempShapeCh1->GetXaxis()->GetBinCenter(512)<<endl;
-		
 	}
-	
 	if (DEBUG3) cout<<"FillHistograms, No of Channels: "<<No_of_Ch<<endl;
 	
-			
-
-	
 	for (int j=1; j<=No_of_Ch; j++){
-		
 		// the bins 0,1, 1023, 1022, 1021, 1020 have very high spikes too often 
 		BinVoltage[j][0] = BinVoltage[j][3];
 		BinVoltage[j][1] = BinVoltage[j][4];
@@ -704,7 +442,7 @@ WaveformParam output; //how many parameters to be returned
 	// this line is for constant fraction discrimination :
 	output.arrivalTime = ArrivalTime(AnalysisHist, triggerHeight, output.baseLine, 3., fract); // risetime 3. ns, by eye, fraction 0.2
 
-	output.arrivalTime2 = ArrivalTime2(AnalysisHist, output.baseLine, fract); // last nuber is a fraction at 
+	output.arrivalTime2 = ArrivalTime2(AnalysisHist, output.baseLine, fract, triggerHeight); // last nuber is a fraction at 
 
 	output.FWHM = GetFWHM(Ch, output.baseLine);
 	output.FW10pcntM = GetFWHM(Ch, output.baseLine, 10);
@@ -1126,15 +864,20 @@ ArTmtmp[4]=ArTm4;
 			
 			if (DEBUG2) cout<<"j:"<<j<<", i:"<<i<<", ArBin="<<ArBin<<", BinContent="<<BinContent<<endl;
 			//if ((ArTmtmp[1]<=0)&&(j==1)) cout<<"j:"<<j<<", i:"<<i<<", ArBin="<<ArBin<<", ArTmtmp[1]="<<ArTmtmp[1]<<", BinContent="<<BinContent<<endl;
+			if (DEBUG2) cout<<"TotShape[j]="<<TotShape[j]<<endl;
+			if (DEBUG2) cout<<", TotShape[j]->GetBinContent((i+152-1)%Nbins+1)+BinContent); "<<TotShape[j]->GetBinContent(309)<<flush<<endl;
+		if (DEBUG2) cout<<"here"<<endl;				
 		if(j==chpm1)	if(ArTmtmp[chpm1]!=-1.) TotShape[j]->SetBinContent((i+152-1)%Nbins+1, TotShape[j]->GetBinContent((i+152-1)%Nbins+1)+BinContent); 
 						else 	NullEventShape[j]->SetBinContent((i+152-1)%Nbins+1, NullEventShape[j]->GetBinContent((i+152-1)%Nbins+1)+BinContent);
+		if (DEBUG2) cout<<"here"<<endl;		
 		if(j==chpm2)	if(ArTmtmp[chpm2]!=-1.) TotShape[j]->SetBinContent((i+160-1)%Nbins+1, TotShape[j]->GetBinContent((i+160-1)%Nbins+1)+BinContent); 
 						else    NullEventShape[j]->SetBinContent((i+160-1)%Nbins+1, NullEventShape[j]->GetBinContent((i+160-1)%Nbins+1)+BinContent);
 		
 		if((j!=chpm1)&&	(j!=chpm2))    TotShape[j]->SetBinContent((i+170)%Nbins, TotShape[j]->GetBinContent((i+170)%Nbins)+BinContent); 
+		if (DEBUG2) cout<<"here"<<endl;
 		}
 	}
-	//cout<<"exit FillTotHistograms"<<flush<<endl;
+	if(DEBUG2) cout<<"exit FillTotHistograms"<<flush<<endl;
 
 }
 
@@ -1176,7 +919,7 @@ ArTmtmp[4]=ArTm4;
 
 }
 
-float WaveProcessor::ArrivalTime2(const TH1F* hist, float baseLine, const float fraction){
+float WaveProcessor::ArrivalTime2(const TH1F* hist, float baseLine, const float fraction, const float triggerHeight){
 	float tArrival;
 	int i;
 	Int_t maxBin = hist->GetMaximumBin();
@@ -1241,7 +984,7 @@ int WaveProcessor::GetPeakParameters(const TH1F* hist, PeakDerivatives* output, 
 	}*/
 	
 	float baseLine = smoothHist->Integral(0, smoothHist->FindBin(baseLineEnd-delay), "width") / (baseLineEnd-delay) ; 
-	arTm = ArrivalTime2(hist, baseLine, fract); // last nuber is a fraction at
+	arTm = ArrivalTime2(hist, baseLine, fract, triggerHeight); // last nuber is a fraction at
 	
 	if(DEBUG4) cout<<"arTm="<<arTm<<", binCenter="<<hist->FindFixBin(arTm)<<", baseLine"<<baseLine<<endl;
 	
@@ -1276,14 +1019,14 @@ void WaveProcessor::InitializeUnitParameters(){
 	
 	for(int i=1; i<=1024; i++) UnitShape->SetBinContent(i,UnitShape->GetBinContent(i)-BaseLineShape->GetBinContent(i));
 	GetPeakParameters(UnitShape, UnitParameters, fract); //smothen
-	
+	// UnitParameters defined to be used in UnitResponseFinder
 	
 }
 
 
 
 void WaveProcessor::UnitResponseFinder(TH1F* hist, float TRef, int* NofUnits, UnitPosAmpl* output){ //must return positions and amplitudes of the unit responses
-	output = new UnitPosAmpl[40]; // don't expect >40, would mean 1 for each ns for 40ns
+	//output = new UnitPosAmpl[40]; // don't expect >40, would mean 1 for each ns for 40ns
 	PeakDerivatives *PeakParam = new PeakDerivatives;
 	
 	char* histfilename;
@@ -1343,7 +1086,7 @@ void WaveProcessor::UnitResponseFinder(TH1F* hist, float TRef, int* NofUnits, Un
 		if(DEBUG4) cout<<"crossBin="<<PeakParam->crossBin<<endl;
 		if(DEBUG4) cout<<"FirstUnitAmplitude="<<FirstUnitAmplitude<<endl;
 		
-		/** fract and averaging should be considere for the number of derivatives **/
+		/** fract and averaging should be considered in the decision how many of derivatives to include **/
 
 		
 		// rise edge is 38 bins, decay edge of the Unit is 194 (after the peak maximum)
@@ -1370,7 +1113,7 @@ void WaveProcessor::UnitResponseFinder(TH1F* hist, float TRef, int* NofUnits, Un
 	}
 	if(DEBUG4) cout<<"exit Whileloop UnitFinder \n"<<"cnt="<<cnt<<endl;
 	
-	if (drawFlag||(cnt>=40)||(eventID-eventStart<40)) {
+	if (drawFlag||(cnt>=40)||(eventID-eventStart<50)) {// print pdf when late component, to many UnitResponses and good events of first 40 events
 
 		if (DEBUG4) cout<<"Canvas defined"<<endl<<flush;
 
@@ -1386,7 +1129,7 @@ void WaveProcessor::UnitResponseFinder(TH1F* hist, float TRef, int* NofUnits, Un
 			if (output[i].amplitude<1.) mark->SetMarkerStyle(kFullTriangleDown);
 			else mark->SetMarkerStyle(kFullTriangleUp);
 			mark->Fill(output[i].position+TRef, output[i].amplitude<1.1?(output[i].amplitude*UnitParameters->maxVal):(hist->GetMaximum()-5.));//output[i].position, 0.5);//output[i].amplitude);
-			cout<<"event("<<eventID<<"):TRef("<<TRef<<"):: postition="<<output[i].position<<", amplitude="<<output[i].amplitude*UnitParameters->maxVal<<endl;
+			//cout<<"event("<<eventID<<"):TRef("<<TRef<<"):: postition="<<output[i].position<<", amplitude="<<output[i].amplitude*UnitParameters->maxVal<<endl;
 		}
 		hist->Draw("hist PLC PMC");
 		mark->Draw("same");
@@ -1407,6 +1150,8 @@ void WaveProcessor::UnitResponseFinder(TH1F* hist, float TRef, int* NofUnits, Un
 	free_matrix(a3,1,3,1,3);
 	free_matrix(b2,1,2,1,1);
 	free_matrix(b3,1,3,1,1);	
-	}
-	
+}
+
+
+
 

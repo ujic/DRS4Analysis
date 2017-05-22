@@ -13,6 +13,7 @@
 #define DEBUG2 0 // 
 #define DEBUG3 0 // CreateHistograms debug 
 #define DEBUG4 0 // UnitResponse debug
+#define DEBUG5 0 // Fit debug
 #define CHPM1 1 // first scintillator
 #define CHPM2 2 // second
 #define CHS3 3 // ch of first trigger
@@ -20,10 +21,16 @@
 #define BASELINE 3 // ad-hoc baseline in mV
 #define BASELINEEND 30. // the end point of the baseline (it is integrated from 0 ns to BASELINEEND ns
 #define NBINS 1024 // usually for DRS4 it's 1024 ...
-#define FRACTION 20 // in % used for the constant fraction correction
-					/** FRACTION is better to be small **/
-#define AVERAGING 5 // how many bins to average in creating smoothHist used to determine the derivatives(slopes)
+#define FRACTION 50 // in % used for the constant fraction correction
+					/** FRACTION is better to be small (not sure) **/ 
+#define AVERAGING 4 // how many bins to average in creating smoothHist used to determine the derivatives(slopes)
 					// of the peak 
+#define FIRST 20 // where the fit function of unit responses begins - see Fit.cxx
+#define LAST 70  // where it ends
+#define FREE_FIT_UR 1 // how many more UnitResponses to add to fit, besides the ones found by FindUnitResponses()
+#define CHI2REJECT 8 // 10 means every fit with normalized chi2>1. will not be writen in UnRespDistrPM1 histogram
+#define DELAY 0
+#define TRESHOLD 30 // it's triggerHeight in 0.1 mV
 
 
 
@@ -52,6 +59,7 @@
 
 
 using namespace std;
+
 
 typedef unsigned short USHORT;
 typedef signed short SSHORT; 
@@ -92,19 +100,34 @@ struct WaveformParam {
     Float_t FW10pcntM; // full width at 10 % of Maximum
 };
 
-float convertChtoF (char*) ; // converts ch aray of 4 to the float
-USHORT convertChtoUSHORT (char*) ; // converts ch aray of 2 to the unsigned short
-unsigned int convertChtoUint (char*); // converts ch aray of 4 to the unsigned int
-SSHORT convertChtoSSHORT (char*) ; // converts ch aray of 2 to the unsigned short
-
-// The Unit respose is a response to high energy muon, i.e it's a kind of Green function of the system
-// since the amplitudes of the response to muons are not allways the same
-// The hadronic shower is constituted of many superimposed Green functions and our goal is to find their positions   
 struct UnitPosAmpl{
 	Float_t position; // start position of the Unit response 
 	Float_t amplitude;// amplitude
 //	Float_t amplitude_err;
 };
+
+float convertChtoF (char*) ; // converts ch aray of 4 to the float
+USHORT convertChtoUSHORT (char*) ; // converts ch aray of 2 to the unsigned short
+unsigned int convertChtoUint (char*); // converts ch aray of 4 to the unsigned int
+SSHORT convertChtoSSHORT (char*) ; // converts ch aray of 2 to the unsigned short
+
+/** ///////////////////// FIT /////////////// **/
+/*
+extern int NUnitsBridge;
+extern Float_t refArrTimeShape; // this is to tell the fit function where is the refference bin
+extern TH1F *UnitShapeBridge;
+extern TH1F *TempShapeBridge;
+*/
+
+Float_t FitUnitResponses(TH1F*, TH1F*, int , UnitPosAmpl*, const float, const int, char*, Float_t, float);
+Double_t ftotal(Double_t*, Double_t*);
+
+// The Unit respose is a response to high energy muon, i.e it's a kind of Green function of the system
+// since the amplitudes of the response to muons are not allways the same
+// The hadronic shower is constituted of many superimposed Green functions and our goal is to find their positions   
+
+
+
 
 
 class WaveProcessor {
@@ -157,6 +180,9 @@ class WaveProcessor {
     DRS4_data::Observables* ProcessOnline(Float_t* , Float_t* , Int_t);
     static DRS4_data::Observables* ProcessOnline(Float_t* time, Float_t* amplitude, Int_t length, float threshold, float trigDelay);
 	void UnitResponseFinder(TH1F*, float , int*, UnitPosAmpl* );
+//	Float_t FitUnitResponses(TH1F*, int , UnitPosAmpl*);
+
+	//static Double_t Bridge(Double_t*, Double_t*);
 
 	static TH1F* GetUnitHistogramRaw();
 	static TH1F* GetBaseLineHistogramRaw();
@@ -169,6 +195,8 @@ class WaveProcessor {
     void AmplitudeTimeCorrection(char*);
     UnitPosAmpl give_time_amplitude(int);
     
+    static float ArrivalTime2(const TH1F*, float, const float, const float); // needs to be public, for the Fit.cxx
+    
     private:										// PRIVATE:
     
     PeakDerivatives* UnitParameters;
@@ -179,7 +207,7 @@ class WaveProcessor {
     static float CalcHistRMS(const TH1F*, int, int );
     static float MeanAndRMS(const TH1F*, int first, int last, float &mean, float &rms);
     static float ArrivalTime(const TH1F*, float, float, float, float);
-    float ArrivalTime2(const TH1F*, float, const float);
+
     int GetPeakParameters(const TH1F*, PeakDerivatives*, float); 
     // return maxVal, 1st, 2nd and 3rd derivative around fraction crosspoint - all for smothened histogram !!!!
     
@@ -206,11 +234,18 @@ class WaveProcessor {
     
     // root TTree variables
     WaveformParam WFParamPM1, WFParamPM2, WFParamS3, WFParamS4;
+    UnitPosAmpl* Units_in_PeakPM1; // unit responses in signal with their amplitudes and time positions 
+	UnitPosAmpl* Units_in_PeakPM2;	
+	Int_t NUnitsPM1; // this will contain how many peaks were returned by UnitResponseFinder
+	Float_t NUnitchi2PM1;
+	Int_t NUnitsPM2; // this will contain how many peaks were returned by UnitResponseFinder
+	Float_t NUnitchi2PM2;
+    
     Float_t TimeRef;
         
     float TimeBinWidth[5][1024]; // this is the time width of given bin according to the calibration
     float BinVoltage[5][1024]; // this is the voltage of the given bin, for us (-0.5 V, +0.5 V)
-    float TimeBinVoltage[5][1024]; // this is the time in ns between the trigger and the given bin
+    float TimeBinVoltage[5][1025]; // this is the time in ns between the trigger and the given bin
 
     // should contain the shape of only one event
     TH1F* TempShapeCh1;
@@ -224,8 +259,8 @@ class WaveProcessor {
 							 // this one will be used to subtract the total baseline from the Unit response (muon signals)
     TH1F* NullEventShapeNA[5]; 
     TH1F* RawTempShape;
-  
-    
+    TH1F* UnRespDistrPM1;
+	TH1F* UnRespDistrPM2;
     
 };
 #endif //WAVEPROCESSOR_H
